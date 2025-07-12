@@ -3,6 +3,7 @@ from fastapi import FastAPI, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from routes import router
+from middlewares.api_key_middleware import APIKeyMiddleware  # Add this line
 
 
 app = FastAPI(
@@ -11,6 +12,11 @@ app = FastAPI(
     version="1.0.0",
     swagger_ui_parameters={"persistAuthorization": True},
 )
+
+
+# Add API key middleware - Add this line
+app.add_middleware(APIKeyMiddleware)
+
 
 # CORS
 origins = [
@@ -26,7 +32,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(router)
+# app.include_router(router)
+app.include_router(router, prefix="/api")
 
 
 @app.exception_handler(404)
