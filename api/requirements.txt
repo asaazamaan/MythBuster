@@ -1,54 +1,76 @@
-annotated-types==0.7.0
-anyio==4.6.2.post1
-attrs==24.2.0
-black==24.10.0
-blinker==1.8.2
-certifi==2024.8.30
-click==8.1.7
-fastapi==0.115.5
-h11==0.14.0
-httpcore==1.0.7
-httptools==0.6.4
-httpx==0.27.2
-idna==3.10
-iniconfig==2.0.0
-itsdangerous==2.2.0
-Jinja2==3.1.4
-jsonschema==4.23.0
-jsonschema-specifications==2024.10.1
-MarkupSafe==3.0.0
-mistune==3.0.2
-mypy-extensions==1.0.0
-packaging==24.1
-pathspec==0.12.1
-platformdirs==4.3.6
-pluggy==1.5.0
-psycopg==3.2.3
-psycopg-binary==3.2.3
-psycopg2==2.9.10
-pydantic==2.9.2
-pydantic_core==2.23.4
-pytest==8.3.3
-python-dotenv==1.0.1
-PyYAML==6.0.2
-referencing==0.35.1
-rpds-py==0.21.0
-six==1.16.0
-sniffio==1.3.1
-SQLAlchemy==2.0.36
-sqlmodel==0.0.22
-starlette==0.41.2
-typing_extensions==4.12.2
-uvicorn==0.32.0
-uvloop==0.21.0
-watchfiles==0.24.0
-websockets==14.1
-Werkzeug==3.0.4
-docker
-python-multipart
+# annotated-types==0.7.0
+# anyio==4.6.2.post1
+# attrs==24.2.0
+# black==24.10.0
+# blinker==1.8.2
+# certifi==2024.8.30
+# click==8.1.7
+# fastapi==0.115.5
+# h11==0.14.0
+# httpcore==1.0.7
+# httptools==0.6.4
+# httpx==0.27.2
+# idna==3.10
+# iniconfig==2.0.0
+# itsdangerous==2.2.0
+# Jinja2==3.1.4
+# jsonschema==4.23.0
+# jsonschema-specifications==2024.10.1
+# MarkupSafe==3.0.0
+# mistune==3.0.2
+# mypy-extensions==1.0.0
+# packaging==24.1
+# pathspec==0.12.1
+# platformdirs==4.3.6
+# pluggy==1.5.0
+# psycopg==3.2.3
+# psycopg-binary==3.2.3
+# psycopg2==2.9.10
+# pydantic==2.9.2
+# pydantic_core==2.23.4
+# pytest==8.3.3
+# python-dotenv==1.0.1
+# PyYAML==6.0.2
+# referencing==0.35.1
+# rpds-py==0.21.0
+# six==1.16.0
+# sniffio==1.3.1
+# SQLAlchemy==2.0.36
+# sqlmodel==0.0.22
+# starlette==0.41.2
+# typing_extensions==4.12.2
+# uvicorn==0.32.0
+# uvloop==0.21.0
+# watchfiles==0.24.0
+# websockets==14.1
+# Werkzeug==3.0.4
+# docker
+# python-multipart
 
-bcrypt==4.0.1 
-jwt
+# bcrypt==4.0.1 
+# jwt
+# python-jose
+# passlib
+# pydantic[email]
+
+
+# # ADD THESE NEW LINES FOR VIDEO PROCESSING FOR FACTCHER PROJECT
+
+#####################################
+fastapi==0.115.5
+uvicorn==0.32.0
+python-dotenv==1.0.1
+psycopg2==2.9.10
+pytest==8.3.3
+python-multipart
+bcrypt==4.0.1
 python-jose
 passlib
-pydantic[email]
+httpx==0.27.2
+
+# ML packages (compatible with Python 3.11)
+yt-dlp==2023.12.30
+transformers==4.36.2
+torch==2.1.2
+torchaudio==2.1.2
+datasets==2.15.0
