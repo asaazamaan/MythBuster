@@ -1,120 +1,4 @@
-# version: "3"
-# services:
-  
-#   db:
-#     image: postgres:16.4-alpine
-#     container_name: factchecker_postgres_container
-#     hostname: factchecker_postgres16
-#     env_file:
-#       - .env
-#     environment:
-#       - POSTGRES_USER=${POSTGRES_USER}
-#       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-#       - POSTGRES_DB=${POSTGRES_DB}
-#       - POSTGRES_PORT=${POSTGRES_PORT}
-#     ports:
-#       - ${POSTGRES_PORT}:${POSTGRES_PORT}
-#     restart: unless-stopped
-#     volumes:
-#       - pg_data:/var/lib/postgresql/data
-#       - ./db-init-scripts:/docker-entrypoint-initdb.d
-#     networks:
-#       - app_network
-#     healthcheck:
-#       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
-#       interval: 120s
-#       timeout: 5s
-#       retries: 3
-  
-#   pgadmin:
-#     image: dpage/pgadmin4:8.11.0
-#     container_name: factchecker_pgadmin_container
-#     environment:
-#       - POSTGRES_HOST=factchecker_postgres16
-#       - POSTGRES_PORT=${POSTGRES_PORT}
-#       - POSTGRES_DB=${POSTGRES_DB}
-#       - POSTGRES_USER=${POSTGRES_USER}
-#       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-#       - PGADMIN_PORT=${PGADMIN_PORT}
-#       - PGADMIN_DEFAULT_EMAIL=${PGADMIN_DEFAULT_EMAIL}
-#       - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_DEFAULT_PASSWORD}
-#       - PGADMIN_CONFIG_SERVER_MODE=False
-#       - PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED=False
-#     volumes:
-#       - ./pgadmin-init.sh:/entrypoint_custom.sh
-#       - pgadmin_data:/var/lib/pgadmin
-#     depends_on:
-#       - db
-#     user: root
-#     entrypoint: /entrypoint_custom.sh
-#     ports:
-#       - $PGADMIN_PORT:80
-#     networks:
-#       - app_network
-
-#   api:
-#     build:
-#       context: api
-#       dockerfile: Dockerfile
-#       args:
-#         PORT: ${API_SERVER_PORT}
-#     env_file:
-#       - .env
-#     environment:
-#       - CHOKIDAR_USEPOLLING=true
-#       - WATCHPACK_POLLING=true
-#       - WATCHPACK_POLLING_INTERVAL=1000
-#     container_name: factchecker_api_server_container
-#     ports:
-#       - ${API_SERVER_PORT}:${API_SERVER_PORT}
-#     volumes:
-#       - ./api:/app
-
-#     depends_on:
-#       - db
-#     networks:
-#       - app_network
-#     healthcheck:
-#       test: ["CMD", "curl", "-f", "http://localhost:${API_SERVER_PORT}/health"]
-#       interval: 120s
-#       timeout: 5s
-#       retries: 3
-  
-#   web-app:
-#     environment:
-#       - REACT_APP_PORT=${REACT_APP_PORT}
-#       - REACT_APP_API_SERVER_KEY=${API_SERVER_KEY}
-#       - CHOKIDAR_USEPOLLING=true
-#       - WATCHPACK_POLLING=true
-#       - WATCHPACK_POLLING_INTERVAL=1000
-#     build:
-#       context: web-app
-#       dockerfile: Dockerfile
-#       args:
-#         PORT: ${REACT_APP_PORT}
-#     container_name: factchecker_react_container
-#     ports:
-#       - ${REACT_APP_PORT}:${REACT_APP_PORT}
-#     volumes:
-#       - ./web-app:/app
-#     depends_on:
-#       - db
-#       - api
-#     networks:
-#       - app_network
-
-
-# networks:
-#   app_network:
-#     driver: bridge
-
-# volumes:
-#   pg_data:
-#   pgadmin_data:
-
-
-# FOR FACT CHECKER PROJECT
-version: "3"
+version: "3.8"
 services:
   
   db:
@@ -186,6 +70,9 @@ services:
     volumes:
       - ./api:/app
       - ./downloads:/app/downloads
+      - model_cache:/root/.cache/huggingface  # ✅ Whisper model cache
+      - torch_cache:/root/.cache/torch        # ✅ PyTorch cache
+      - transformers_cache:/root/.cache/transformers  # ✅ Transformers cache
     depends_on:
       - db
     networks:
@@ -193,9 +80,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 3G
+          memory: 4G  # ✅ Increased for ML models
         reservations:
-          memory: 1G
+          memory: 2G  # ✅ Increased for ML models
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${API_SERVER_PORT}/api/health"]
       interval: 120s
@@ -232,3 +119,6 @@ networks:
 volumes:
   pg_data:
   pgadmin_data:
+  model_cache:          # ✅ Hugging Face model cache
+  torch_cache:          # ✅ PyTorch cache
+  transformers_cache:   # ✅ Transformers cache

@@ -1,27 +1,25 @@
 import os
 from fastapi import FastAPI, Depends
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBearer  # ✅ This import was missing
 from fastapi.middleware.cors import CORSMiddleware
 from routes import router
-from middlewares.api_key_middleware import APIKeyMiddleware  # Add this line
-
+from middlewares.api_key_middleware import APIKeyMiddleware
 
 app = FastAPI(
-    title="Fact_Checker API",
-    description="This is the documentation of the Fact_Checker API.",
+    title="FactChecker API",
+    description="API for video fact-checking with transcription",
     version="1.0.0",
     swagger_ui_parameters={"persistAuthorization": True},
 )
 
-
-# Add API key middleware - Add this line
-app.add_middleware(APIKeyMiddleware)
-
+security = HTTPBearer()
 
 # CORS
 origins = [
-    "http://localhost",
-    "http://localhost:" + os.getenv("REACT_APP_PORT"),
+    "http://localhost:" + os.getenv("REACT_APP_PORT", "3000"),
+    "http://localhost:4000",
+    "http://127.0.0.1:4000",
 ]
 
 app.add_middleware(
@@ -32,9 +30,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# app.include_router(router)
-app.include_router(router, prefix="/api")
+app.add_middleware(APIKeyMiddleware)
 
+app.include_router(router, prefix="/api", dependencies=[Depends(security)])
 
 @app.exception_handler(404)
 async def not_found(request, exc):
@@ -42,6 +40,6 @@ async def not_found(request, exc):
         content={"error": f"Resource not found: {request.url}"}, status_code=404
     )
 
-
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=os.getenv("API_SERVER_PORT", 4000))
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("API_SERVER_PORT", 4000)), reload=True)
