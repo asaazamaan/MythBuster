@@ -45,7 +45,7 @@ function App() {
             "Content-Type": "application/json",
             Authorization: "Bearer factchecker-api-key-123",
           },
-          timeout: 300000, // ✅ Increase to 5 minutes (300 seconds)
+          timeout: 400000, // ✅ Increase to 5 minutes (300 seconds)
         }
       );
 
