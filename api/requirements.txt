@@ -4,8 +4,11 @@ python-dotenv==1.0.1
 python-multipart
 yt-dlp==2024.12.13
 
+requests==2.31.0  # ✅ Add this
+
 # Add ML packages for real transcription
 torch==2.1.2
 torchaudio==2.1.2
 transformers==4.36.2
 numpy==1.24.3
+
