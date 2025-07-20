@@ -19,10 +19,21 @@ class TranscriptionService:
         )
         print("✅ Whisper model loaded successfully!")
     
-    def transcribe_audio_files(self, audio_files: List[str] = None) -> Dict[str, Any]:
-        """Real transcription using Whisper with language detection"""
-        if audio_files is None:
-            audio_files = [f for f in os.listdir(self.output_dir) if f.endswith('.mp3')]
+    def transcribe_audio_files(self, audio_files: List[str]) -> Dict[str, Any]:
+        """Real transcription using Whisper - ONLY for specified files"""
+        
+        # ✅ Always require specific files - no scanning directory
+        if not audio_files:
+            return {
+                "transcriptions": [],
+                "errors": ["No audio files provided"],
+                "total_files": 0,
+                "successful_transcriptions": 0
+            }
+        
+        # Filter to only .mp3 files that exist
+        audio_files = [f for f in audio_files if f.endswith('.mp3')]
+        print(f"🎯 Processing ONLY specified files: {audio_files}")
         
         transcriptions = []
         errors = []
@@ -33,12 +44,11 @@ class TranscriptionService:
                 if os.path.exists(file_path):
                     print(f"🎤 Transcribing: {audio_file}")
                     
-                    # Real Whisper transcription with language detection
                     result = self.asr_pipeline(
                         file_path,
                         generate_kwargs={
-                            "task": "transcribe",  # Don't translate, just transcribe
-                            "language": None       # Auto-detect language (Arabic/English)
+                            "task": "transcribe",
+                            "language": None
                         }
                     )
                     
