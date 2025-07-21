@@ -35,3 +35,7 @@ yarn-error.log*
 **/.vscode
 /.vscode-*
 api/uploads/
+
+
+# downloads
+D:\Projects\factChecker\downloads
