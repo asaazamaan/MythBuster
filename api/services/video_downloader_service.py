@@ -38,18 +38,26 @@ class VideoDownloaderService:
             with YoutubeDL(ydl_opts) as ydl:
                 for url in urls:
                     try:
+                        # ✅ Clear directory before download to avoid file conflicts
+                        print(f"🧹 Cleaning downloads directory...")
+                        for file in os.listdir(self.output_dir):
+                            if file.endswith(('.mp3', '.mp4', '.webm')):
+                                file_path = os.path.join(self.output_dir, file)
+                                os.remove(file_path)
+                                print(f"🗑️ Removed old file: {file}")
+                        
                         # Download the video
                         ydl.download([url])
                         print(f"✅ Downloaded: {url}")
                         
-                        # ✅ Simple approach: Get the newest MP3 file
+                        # ✅ Get all MP3 files (should be only the new one)
                         mp3_files = [f for f in os.listdir(self.output_dir) if f.endswith('.mp3')]
                         
                         if mp3_files:
-                            # Get the most recently modified MP3 file
-                            newest_file = max(mp3_files, key=lambda f: os.path.getmtime(os.path.join(self.output_dir, f)))
-                            downloaded_files.append(newest_file)
-                            print(f"📁 Found downloaded file: {newest_file}")
+                            # Since we cleaned the directory, this should be the new file
+                            downloaded_file = mp3_files[0]  # Take the first (should be only) file
+                            downloaded_files.append(downloaded_file)
+                            print(f"📁 Found downloaded file: {downloaded_file}")
                         else:
                             errors.append(f"No MP3 file found after downloading {url}")
 

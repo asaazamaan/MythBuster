@@ -38,4 +38,14 @@ api/uploads/
 
 
 # downloads
-D:\Projects\factChecker\downloads
+downloads/
+**/downloads/
+*.mp3
+*.mp4
+*.webm
+*.wav
+*.m4a
+
+# Specific download locations
+api/downloads/
+web-app/downloads/
