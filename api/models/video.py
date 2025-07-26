@@ -11,4 +11,5 @@ class Video(SQLModel, table=True):
     title: Optional[str] = Field(default=None, max_length=200)
     transcription: Optional[str] = Field(default=None)
     claims: List[str] = Field(default_factory=list, sa_column=Column(JSON))
+    verdicts: List[dict] = Field(default_factory=list, sa_column=Column(JSON))  # ✅ ADD THIS LINE
     processed_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc))

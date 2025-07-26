@@ -163,17 +163,44 @@
 }
 
 .claims-list {
-  space-y: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
+/* Fixed Claim Item Layout */
 .claim-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 15px;
+  display: block; /* Block layout for proper spacing */
   padding: 20px;
   background: #f8f9fa;
   border-radius: 10px;
   border-left: 4px solid #28a745;
+  margin-bottom: 20px;
+}
+
+.claim-item.verdict-true {
+  border-left-color: #28a745;
+}
+
+.claim-item.verdict-false {
+  border-left-color: #dc3545;
+}
+
+.claim-item.verdict-partially_true {
+  border-left-color: #ffc107;
+}
+
+.claim-item.verdict-insufficient_info {
+  border-left-color: #6c757d;
+}
+
+/* Claim Header - Horizontal Layout */
+.claim-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 15px;
+  flex-wrap: wrap;
 }
 
 .claim-number {
@@ -189,17 +216,165 @@
   flex-shrink: 0;
 }
 
+/* Verdict Badge */
+.verdict-badge {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.verdict-badge.verdict-true {
+  background: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.verdict-badge.verdict-false {
+  background: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+.verdict-badge.verdict-partially_true {
+  background: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffeaa7;
+}
+
+.verdict-badge.verdict-insufficient_info {
+  background: #e2e3e5;
+  color: #383d41;
+  border: 1px solid #d1ecf1;
+}
+
+/* Confidence Score */
+.confidence-score {
+  font-size: 13px;
+  color: #666;
+  background: #f8f9fa;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-weight: 500;
+  border: 1px solid #e9ecef;
+}
+
+/* Claim Text - Full Width */
 .claim-text {
-  flex: 1;
+  width: 100%;
   font-size: 16px;
   line-height: 1.6;
-  text-align: right; /* For Arabic text */
+  text-align: right;
+  direction: rtl;
+  margin-bottom: 15px;
+  padding: 15px;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
   font-family: 'Arial', sans-serif;
 }
 
+/* Medical Reasoning - Full Width, Separate Row */
+.medical-reasoning {
+  width: 100%;
+  margin-top: 15px;
+  padding: 15px;
+  background: #f1f3f4;
+  border-radius: 8px;
+  border-left: 4px solid #007bff;
+  font-size: 14px;
+  line-height: 1.6;
+  text-align: right;
+  direction: rtl;
+  border: 1px solid #dee2e6;
+}
+
+/* Medical Category Tag */
+.medical-category {
+  display: inline-block;
+  background: #e7f3ff;
+  color: #0066cc;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  margin-top: 10px;
+  border: 1px solid #b3d9ff;
+}
+
+/* Legacy Verdict Styles */
+.verdict-info {
+  margin-top: 15px;
+  padding: 15px;
+  background: #f0f8ff;
+  border-radius: 8px;
+  border: 1px solid #e1ecf4;
+}
+
+.verdict-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+/* Legacy Badge Styles */
+.verdict-badge.verified {
+  background: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.verdict-badge.false {
+  background: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+.verdict-badge.misleading {
+  background: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffeaa7;
+}
+
+.verdict-badge.unclear {
+  background: #e2e3e5;
+  color: #383d41;
+  border: 1px solid #d1ecf1;
+}
+
+/* Reasoning Section */
+.reasoning-section {
+  margin-top: 15px;
+}
+
+.reasoning-toggle {
+  background: none;
+  border: none;
+  color: #007bff;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+}
+
+.reasoning-content {
+  margin-top: 10px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border-left: 3px solid #007bff;
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: right;
+  direction: rtl;
+}
+
+/* Claim Actions */
 .claim-actions {
   display: flex;
   gap: 10px;
+  margin-top: 10px;
 }
 
 .fact-check-btn {
@@ -217,6 +392,18 @@
   background: #218838;
 }
 
+.fact-check-btn:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+}
+
+.processing-note {
+  color: #666;
+  font-style: italic;
+  font-size: 14px;
+}
+
+/* No Claims Section */
 .no-claims {
   text-align: center;
   padding: 40px;
@@ -225,6 +412,7 @@
   color: #666;
 }
 
+/* Buttons */
 .clear-btn {
   padding: 10px 20px;
   background: #6c757d;
@@ -239,9 +427,48 @@
   background: #5a6268;
 }
 
+/* Status and Utility Classes */
+.status {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: bold;
+}
+
+.status.success {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status.error {
+  background: #f8d7da;
+  color: #721c24;
+}
+
 .error-text {
   color: #dc3545;
   font-style: italic;
+}
+
+.cache-info {
+  background: #e7f3ff;
+  color: #0066cc;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  margin-top: 10px;
+}
+
+.url-link {
+  color: #007bff;
+  text-decoration: none;
+}
+
+.url-link:hover {
+  text-decoration: underline;
+}
+
+.status-info p {
+  margin-bottom: 8px;
 }
 
 /* Responsive Design */
@@ -260,8 +487,138 @@
     text-align: center;
   }
   
-  .claim-item {
+  .claim-header {
     flex-direction: column;
-    text-align: center;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .claim-text {
+    font-size: 14px;
+    padding: 12px;
+  }
+  
+  .medical-reasoning {
+    font-size: 13px;
+    padding: 12px;
+  }
+  
+  .confidence-score {
+    font-size: 12px;
+  }
+}
+
+/* Print Styles */
+@media print {
+  .App {
+    background: white;
+  }
+  
+  .form, .success-header {
+    box-shadow: none;
+    border: 1px solid #ddd;
+  }
+  
+  .clear-btn, .fact-check-btn {
+    display: none;
+  }
+}
+
+
+/* Fix Text Overflow - Add after line 525 */
+
+/* Claim Item Container Fix */
+.claim-item {
+  display: block;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 10px;
+  border-left: 4px solid #28a745;
+  margin-bottom: 20px;
+  overflow: hidden; /* ✅ Prevent overflow */
+  word-wrap: break-word; /* ✅ Break long words */
+}
+
+/* Claim Text Container Fix */
+.claim-text {
+  width: 100%;
+  font-size: 16px;
+  line-height: 1.6;
+  text-align: right;
+  direction: rtl;
+  margin-bottom: 15px;
+  padding: 15px;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+  font-family: 'Arial', sans-serif;
+  overflow-wrap: break-word; /* ✅ Break long Arabic words */
+  word-break: break-word; /* ✅ Force word breaking */
+  hyphens: auto; /* ✅ Add hyphens when needed */
+  box-sizing: border-box; /* ✅ Include padding in width */
+}
+
+/* Medical Reasoning Container Fix */
+.medical-reasoning {
+  width: 100%;
+  margin-top: 15px;
+  padding: 15px;
+  background: #f1f3f4;
+  border-radius: 8px;
+  border-left: 4px solid #007bff;
+  font-size: 14px;
+  line-height: 1.6;
+  text-align: right;
+  direction: rtl;
+  border: 1px solid #dee2e6;
+  overflow-wrap: break-word; /* ✅ Break long Arabic words */
+  word-break: break-word; /* ✅ Force word breaking */
+  hyphens: auto; /* ✅ Add hyphens when needed */
+  box-sizing: border-box; /* ✅ Include padding in width */
+  max-width: 100%; /* ✅ Never exceed parent width */
+}
+
+/* Card Container Fix */
+.card {
+  background: white;
+  padding: 25px;
+  border-radius: 15px;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+  margin-bottom: 20px;
+  overflow: hidden; /* ✅ Prevent child overflow */
+  box-sizing: border-box; /* ✅ Include padding in width */
+}
+
+/* Claims List Container Fix */
+.claims-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow: hidden; /* ✅ Prevent overflow */
+}
+
+/* Arabic Text Global Fix */
+[dir="rtl"] {
+  overflow-wrap: break-word;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+/* Mobile Responsive Fix */
+@media (max-width: 768px) {
+  .claim-text {
+    font-size: 14px;
+    padding: 12px;
+    line-height: 1.5;
+  }
+  
+  .medical-reasoning {
+    font-size: 13px;
+    padding: 12px;
+    line-height: 1.5;
+  }
+  
+  .card {
+    padding: 15px;
   }
 }

@@ -8,6 +8,7 @@ CREATE TABLE "Video" (
   "title" VARCHAR(200),
   "transcription" TEXT,
   "claims" JSONB NOT NULL DEFAULT '[]',  -- [] or ["claim1", "claim2", "claim3"]
+  "verdicts" JSONB NOT NULL DEFAULT '[]',  -- Fact-check results for each claim
   "processed_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
