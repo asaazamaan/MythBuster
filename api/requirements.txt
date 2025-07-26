@@ -12,3 +12,7 @@ torchaudio==2.1.2
 transformers==4.36.2
 numpy==1.24.3
 
+# ✅ ADD THESE NEW DATABASE PACKAGES:
+sqlalchemy
+sqlmodel
+psycopg2-binary
