@@ -59,6 +59,7 @@ You must follow these rules strictly:
    {{"domain_is_diabetes": false, "claims_with_verdicts": []}}
 
 4. If the transcript's claims ARE about Diabetes, identify the main claims.
+   - Prioritize extracting any claims that are likely to be medically misleading, exaggerated, or incorrect. If no such claims are found, then extract up to three significant factual claims. All claims must be written in correct Arabic, clearly and objectively, while preserving the speaker’s original intended meaning without softening or interpreting it.
    - Focus on the single most significant claim if possible.
    - If a single main claim cannot be identified, extract up to a maximum of three distinct, verifiable claims.
    - Each claim should be a concise, objective statement written in Arabic language.
