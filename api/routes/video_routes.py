@@ -40,49 +40,38 @@ class VideoProcessResponse(BaseModel):
 
 
 def extract_claims_from_transcript(transcript_text):
-    """Extract diabetes claims and fact-check them using Gemini - Returns claims and verdicts"""
+    """Extract diabetes claims from transcript - Returns only claims"""
     try:
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             print("⚠️ Warning: GEMINI_API_KEY not found, skipping claim extraction")
-            return [], []
+            return []
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
 
         prompt = f"""
-You are an expert medical fact-checker for an "AI MythBuster" project. Your task is to analyze the provided video transcript to identify and extract factual claims AND fact-check them using medical knowledge.
+You are an expert medical claim extractor for an "AI MythBuster" project. Your task is to analyze the provided video transcript to identify and extract factual claims ONLY.
 
 You must follow these rules strictly:
 1. The transcript may contain spelling errors, grammar mistakes, and conversational fillers. Ignore these errors and focus on understanding the intended meaning of the text.
 2. Read the transcript carefully to determine if the primary topic and claims are related to the medical field of "Diabetes" or diabetic care.
 3. If the transcript's claims are NOT about Diabetes, your output MUST be this exact JSON object:
-   {{"domain_is_diabetes": false, "claims_with_verdicts": []}}
+   {{"domain_is_diabetes": false, "claims": []}}
 
 4. If the transcript's claims ARE about Diabetes, identify the main claims.
-   - Prioritize extracting any claims that are likely to be medically misleading, exaggerated, or incorrect. If no such claims are found, then extract up to three significant factual claims. All claims must be written in correct Arabic, clearly and objectively, while preserving the speaker’s original intended meaning without softening or interpreting it.
+   - Prioritize extracting any claims that are likely to be medically misleading, exaggerated, or incorrect. If no such claims are found, then extract up to three significant factual claims. All claims must be written in correct Arabic, clearly and objectively, while preserving the speaker's original intended meaning without softening or interpreting it.
    - Focus on the single most significant claim if possible.
    - If a single main claim cannot be identified, extract up to a maximum of three distinct, verifiable claims.
    - Each claim should be a concise, objective statement written in Arabic language.
-   - For EACH claim, provide a medical fact-check verdict using your medical knowledge to assess accuracy.
 
-5. For each claim, determine the verdict:
-   - TRUE: Medically accurate based on established diabetes knowledge
-   - FALSE: Medically incorrect or contradicts established knowledge  
-   - PARTIALLY_TRUE: Contains some truth but incomplete/misleading
-   - INSUFFICIENT_INFO: Cannot determine accuracy with available medical knowledge
-
-6. Your output MUST be this exact JSON format, with the boolean value and claims_with_verdicts array filled in based on the rules above. All claims must be written in Arabic. Do not include any other text, explanations, or conversational language.
+5. Your output MUST be this exact JSON format, with the boolean value and claims array filled in based on the rules above. All claims must be written in Arabic. Do not include any other text, explanations, or conversational language.
 
 {{
   "domain_is_diabetes": true,
-  "claims_with_verdicts": [
-    {{
-      "claim": "Arabic claim text",
-      "verdict": "TRUE|FALSE|PARTIALLY_TRUE|INSUFFICIENT_INFO",
-      "confidence": 0.85,
-      "reasoning": "Brief medical explanation in Arabic",
-      "medical_category": "treatment|prevention|symptoms|causes|diet|lifestyle"
-    }}
+  "claims": [
+    "Arabic claim text 1",
+    "Arabic claim text 2",
+    "Arabic claim text 3"
   ]
 }}
 
@@ -116,14 +105,12 @@ Transcript to analyze:
                         parsed_response = json.loads(extracted_text)
 
                         if parsed_response.get("domain_is_diabetes", False):
-                            claims_with_verdicts = parsed_response.get("claims_with_verdicts", [])
-                            claims = [item["claim"] for item in claims_with_verdicts]
-                            verdicts = claims_with_verdicts
-                            print(f"✅ Diabetes video detected. Claims: {len(claims)}, Verdicts: {len(verdicts)}")
-                            return claims, verdicts
+                            claims = parsed_response.get("claims", [])
+                            print(f"✅ Diabetes video detected. Claims: {len(claims)}")
+                            return claims
                         else:
                             print("ℹ️ Video is not about diabetes, skipping claim extraction")
-                            return [], []
+                            return []
 
                     except json.JSONDecodeError:
                         print(f"❌ Failed to parse JSON response: {extracted_text}")
@@ -133,16 +120,106 @@ Transcript to analyze:
                             for claim in extracted_text.split("\n")
                             if claim.strip()
                         ]
-                        return claims[:3], []
+                        return claims[:3]
 
-            return [], []
+            return []
         else:
             print(f"❌ Gemini API error: {response.status_code} - {response.text}")
-            return [], []
+            return []
 
     except Exception as e:
         print(f"❌ Error extracting claims: {str(e)}")
-        return [], []
+        return []
+
+
+def fact_check_claims(claims):
+    """Fact-check a list of diabetes claims using Gemini - Returns verdicts with details"""
+    try:
+        if not claims:
+            return []
+
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            print("⚠️ Warning: GEMINI_API_KEY not found, skipping fact-checking")
+            return []
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+
+        claims_text = "\n".join([f"{i+1}. {claim}" for i, claim in enumerate(claims)])
+
+        prompt = f"""
+You are an expert medical fact-checker for diabetes claims. Your task is to fact-check the provided diabetes claims using your medical knowledge.
+
+For each claim provided, you must evaluate its medical accuracy and provide:
+1. verdict: TRUE, FALSE, PARTIALLY_TRUE, or INSUFFICIENT_INFO
+2. confidence: A number between 0.0 and 1.0 indicating your confidence in the verdict
+3. reasoning: Brief medical explanation in Arabic for your verdict
+4. medical_category: One of: treatment, prevention, symptoms, causes, diet, lifestyle
+
+Verdict definitions:
+- TRUE: Medically accurate based on established diabetes knowledge
+- FALSE: Medically incorrect or contradicts established knowledge  
+- PARTIALLY_TRUE: Contains some truth but incomplete/misleading
+- INSUFFICIENT_INFO: Cannot determine accuracy with available medical knowledge
+
+Your output MUST be this exact JSON format. Do not include any other text, explanations, or conversational language.
+
+{{
+  "verdicts": [
+    {{
+      "claim": "The original claim text",
+      "verdict": "TRUE|FALSE|PARTIALLY_TRUE|INSUFFICIENT_INFO",
+      "confidence": 0.85,
+      "reasoning": "Brief medical explanation in Arabic",
+      "medical_category": "treatment|prevention|symptoms|causes|diet|lifestyle"
+    }}
+  ]
+}}
+
+Claims to fact-check:
+{claims_text}
+"""
+
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+
+        headers = {"Content-Type": "application/json"}
+
+        response = requests.post(url, json=payload, headers=headers, timeout=60)
+
+        if response.status_code == 200:
+            response_data = response.json()
+            candidates = response_data.get("candidates", [])
+            if candidates:
+                content = candidates[0].get("content", {})
+                parts = content.get("parts", [])
+                if parts:
+                    extracted_text = parts[0].get("text", "").strip()
+
+                    try:
+                        if extracted_text.startswith("```json"):
+                            extracted_text = (
+                                extracted_text.replace("```json", "")
+                                .replace("```", "")
+                                .strip()
+                            )
+
+                        parsed_response = json.loads(extracted_text)
+                        verdicts = parsed_response.get("verdicts", [])
+                        print(f"✅ Fact-checked {len(verdicts)} claims")
+                        return verdicts
+
+                    except json.JSONDecodeError:
+                        print(f"❌ Failed to parse fact-check JSON response: {extracted_text}")
+                        return []
+
+            return []
+        else:
+            print(f"❌ Gemini API error during fact-checking: {response.status_code} - {response.text}")
+            return []
+
+    except Exception as e:
+        print(f"❌ Error fact-checking claims: {str(e)}")
+        return []
 
 
 # ✅ Main endpoint with database caching
@@ -207,8 +284,12 @@ async def process_video(request: VideoProcessRequest, db: Session = Depends(get_
         claims = []
         verdicts = []
         if transcription["success"]:
-            print(f"🔍 Extracting and fact-checking claims from: {transcription['filename']}")
-            claims, verdicts = extract_claims_from_transcript(transcription["transcription"])
+            print(f"🔍 Extracting claims from: {transcription['filename']}")
+            claims = extract_claims_from_transcript(transcription["transcription"])
+            
+            if claims:
+                print(f"🔍 Fact-checking {len(claims)} claims")
+                verdicts = fact_check_claims(claims)
 
         print(f"✅ Extracted {len(claims)} claims with {len(verdicts)} fact-checks")
 
