@@ -1,6 +1,7 @@
 import os
 import requests
 import json
+import sys
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import List, Optional
@@ -12,10 +13,100 @@ from services.transcription_service import TranscriptionService
 from models.video import Video
 from databases import get_session
 
+# Import RAG utilities
+rag_utils_path = '/project/rag'  # ✅ Use mounted project path
+sys.path.append(rag_utils_path)
+print(f"🔎 Attempting to import utils from: {rag_utils_path}")
+try:
+    from utils import get_chroma_collection
+    RAG_AVAILABLE = True
+    print("✅ RAG utilities imported successfully")
+except ImportError as e:
+    RAG_AVAILABLE = False
+    print(f"⚠️ RAG utilities not available: {e}")
+    print(f"   RAG path exists: {os.path.exists(rag_utils_path)}")
+    print(f"   Utils file exists: {os.path.exists(os.path.join(rag_utils_path, 'utils.py'))}")
 
 def get_db():
     session_gen = get_session()
     return next(session_gen)  # Extract Session from generator
+
+
+def translate_to_english(arabic_text):
+    """Translate Arabic text to English for ChromaDB querying"""
+    try:
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            print("⚠️ No API key for translation, using original text")
+            return arabic_text  # Fallback to original
+            
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+        
+        prompt = f"""
+Translate this Arabic medical text to English. Only return the English translation, no other text or explanations:
+
+{arabic_text}
+"""
+        
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+        headers = {"Content-Type": "application/json"}
+        
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        
+        if response.status_code == 200:
+            response_data = response.json()
+            candidates = response_data.get("candidates", [])
+            if candidates:
+                content = candidates[0].get("content", {})
+                parts = content.get("parts", [])
+                if parts:
+                    english_text = parts[0].get("text", "").strip()
+                    print(f"🔄 Translated: '{arabic_text}' → '{english_text}'")
+                    return english_text
+        
+        print(f"⚠️ Translation failed, using original text")
+        return arabic_text  # Fallback to original
+        
+    except Exception as e:
+        print(f"❌ Translation error: {e}")
+        return arabic_text  # Fallback to original
+
+
+def get_relevant_context(claim, max_results=3):
+    """Retrieve relevant documents from ChromaDB for fact-checking context"""
+    try:
+        if not RAG_AVAILABLE:
+            print("⚠️ RAG not available, proceeding without context")
+            return []
+
+        # ✅ Translate Arabic claim to English for better retrieval
+        english_claim = translate_to_english(claim)
+        print(f"🔍 Querying ChromaDB with: '{english_claim}'")
+
+        # Get the ChromaDB collection
+        collection = get_chroma_collection()
+        
+        # Query for relevant documents using English translation
+        results = collection.query(
+            query_texts=[english_claim],  # ✅ Use translated text
+            n_results=max_results
+        )
+        
+        relevant_docs = []
+        if results['documents'] and results['documents'][0]:
+            for i, doc in enumerate(results['documents'][0]):
+                distance = results['distances'][0][i] if results['distances'] else 1.0
+                relevant_docs.append({
+                    'content': doc,
+                    'relevance_score': 1 - distance  # Convert distance to relevance score
+                })
+                print(f"📄 Retrieved relevant doc {i+1} (relevance: {1-distance:.3f})")
+        
+        return relevant_docs
+        
+    except Exception as e:
+        print(f"⚠️ Error retrieving relevant context: {e}")
+        return []
 
 
 router = APIRouter()
@@ -133,7 +224,7 @@ Transcript to analyze:
 
 
 def fact_check_claims(claims):
-    """Fact-check a list of diabetes claims using Gemini - Returns verdicts with details"""
+    """Fact-check a list of diabetes claims using Gemini by processing each claim individually"""
     try:
         if not claims:
             return []
@@ -144,13 +235,46 @@ def fact_check_claims(claims):
             return []
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+        
+        all_verdicts = []
+        
+        # Process each claim individually
+        for i, claim in enumerate(claims):
+            print(f"🔍 Fact-checking claim {i+1}/{len(claims)}: {claim[:50]}...")
+            
+            verdict = fact_check_single_claim(claim, api_key, url)
+            if verdict:
+                all_verdicts.append(verdict)
+        
+        print(f"✅ Fact-checked {len(all_verdicts)} claims successfully")
+        return all_verdicts
 
-        claims_text = "\n".join([f"{i+1}. {claim}" for i, claim in enumerate(claims)])
+    except Exception as e:
+        print(f"❌ Error fact-checking claims: {str(e)}")
+        return []
 
+
+def fact_check_single_claim(claim, api_key, url):
+    """Fact-check a single diabetes claim using Gemini with RAG context"""
+    try:
+        # Get relevant context from ChromaDB
+        print(f"🔍 Retrieving relevant context for claim...")
+        relevant_docs = get_relevant_context(claim)
+        
+        # Build context section for the prompt
+        context_section = ""
+        if relevant_docs:
+            context_section = "\n\nRELEVANT MEDICAL KNOWLEDGE:\n"
+            for i, doc in enumerate(relevant_docs):
+                context_section += f"Document {i+1} (relevance: {doc['relevance_score']:.2f}):\n{doc['content']}\n\n"
+            print(f"✅ Added {len(relevant_docs)} relevant documents as context")
+        else:
+            print("⚠️ No relevant context found, using general medical knowledge")
+        
         prompt = f"""
-You are an expert medical fact-checker for diabetes claims. Your task is to fact-check the provided diabetes claims using your medical knowledge.
+You are an expert medical fact-checker for diabetes claims. Your task is to fact-check the provided diabetes claim using both your medical knowledge and the relevant medical literature provided below.
 
-For each claim provided, you must evaluate its medical accuracy and provide:
+For the claim provided, you must evaluate its medical accuracy and provide:
 1. verdict: TRUE, FALSE, PARTIALLY_TRUE, or INSUFFICIENT_INFO
 2. confidence: A number between 0.0 and 1.0 indicating your confidence in the verdict
 3. reasoning: Brief medical explanation in Arabic for your verdict
@@ -162,26 +286,23 @@ Verdict definitions:
 - PARTIALLY_TRUE: Contains some truth but incomplete/misleading
 - INSUFFICIENT_INFO: Cannot determine accuracy with available medical knowledge
 
+IMPORTANT: Use the relevant medical knowledge provided below to inform your fact-checking. If the provided documents contain information that supports or contradicts the claim, reference this in your reasoning.{context_section}
+
 Your output MUST be this exact JSON format. Do not include any other text, explanations, or conversational language.
 
 {{
-  "verdicts": [
-    {{
-      "claim": "The original claim text",
-      "verdict": "TRUE|FALSE|PARTIALLY_TRUE|INSUFFICIENT_INFO",
-      "confidence": 0.85,
-      "reasoning": "Brief medical explanation in Arabic",
-      "medical_category": "treatment|prevention|symptoms|causes|diet|lifestyle"
-    }}
-  ]
+  "claim": "The original claim text",
+  "verdict": "TRUE|FALSE|PARTIALLY_TRUE|INSUFFICIENT_INFO",
+  "confidence": 0.85,
+  "reasoning": "Brief medical explanation in Arabic",
+  "medical_category": "treatment|prevention|symptoms|causes|diet|lifestyle"
 }}
 
-Claims to fact-check:
-{claims_text}
+Claim to fact-check:
+{claim}
 """
 
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
-
         headers = {"Content-Type": "application/json"}
 
         response = requests.post(url, json=payload, headers=headers, timeout=60)
@@ -203,23 +324,22 @@ Claims to fact-check:
                                 .strip()
                             )
 
-                        parsed_response = json.loads(extracted_text)
-                        verdicts = parsed_response.get("verdicts", [])
-                        print(f"✅ Fact-checked {len(verdicts)} claims")
-                        return verdicts
+                        verdict = json.loads(extracted_text)
+                        print(f"✅ Fact-checked claim with RAG: {verdict.get('verdict', 'UNKNOWN')}")
+                        return verdict
 
                     except json.JSONDecodeError:
                         print(f"❌ Failed to parse fact-check JSON response: {extracted_text}")
-                        return []
+                        return None
 
-            return []
+            return None
         else:
             print(f"❌ Gemini API error during fact-checking: {response.status_code} - {response.text}")
-            return []
+            return None
 
     except Exception as e:
-        print(f"❌ Error fact-checking claims: {str(e)}")
-        return []
+        print(f"❌ Error fact-checking single claim: {str(e)}")
+        return None
 
 
 # ✅ Main endpoint with database caching
@@ -288,8 +408,9 @@ async def process_video(request: VideoProcessRequest, db: Session = Depends(get_
             claims = extract_claims_from_transcript(transcription["transcription"])
             
             if claims:
-                print(f"🔍 Fact-checking {len(claims)} claims")
+                print(f"🔍 Fact-checking {len(claims)} claims individually")
                 verdicts = fact_check_claims(claims)
+                print(f"✅ Successfully fact-checked {len(verdicts)} out of {len(claims)} claims")
 
         print(f"✅ Extracted {len(claims)} claims with {len(verdicts)} fact-checks")
 

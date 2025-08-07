@@ -1,18 +1,24 @@
+# FastAPI and server dependencies
 fastapi==0.115.5
 uvicorn==0.32.0
 python-dotenv==1.0.1
 python-multipart
 yt-dlp==2024.12.13
+requests==2.31.0
 
-requests==2.31.0  # ✅ Add this
-
-# Add ML packages for real transcription
-torch==2.1.2
-torchaudio==2.1.2
-transformers==4.36.2
+# ML packages for transcription (compatible versions)
+torch>=2.3.0          # PyTorch ≥ 2.3 exposes torch.uint64
+torchaudio>=2.3.0
+transformers==4.38.2
 numpy==1.24.3
 
-# ✅ ADD THESE NEW DATABASE PACKAGES:
+# Database packages
 sqlalchemy
 sqlmodel
 psycopg2-binary
+
+# RAG dependencies (compatible versions)
+beautifulsoup4==4.12.2
+sentence-transformers==2.3.1
+chromadb==0.4.22
+safetensors>=0.4.1

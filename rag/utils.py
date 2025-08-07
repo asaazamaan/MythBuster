@@ -16,7 +16,13 @@ def get_embedder():
     return SentenceTransformer("all-MiniLM-L6-v2")
 
 def get_chroma_collection():
-    client = chromadb.PersistentClient(path="../.chromadb")
+    # Check if running in Docker container (project mounted at /project)
+    import os
+    if os.path.exists("/project"):
+        client = chromadb.PersistentClient(path="/project/.chromadb")
+    else:
+        # Local development
+        client = chromadb.PersistentClient(path="../.chromadb")
     return client.get_or_create_collection("medical_facts")
 
 def load_urls_from_file(file_path):

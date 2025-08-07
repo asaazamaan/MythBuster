@@ -68,11 +68,13 @@ services:
     ports:
       - ${API_SERVER_PORT}:${API_SERVER_PORT}
     volumes:
-      - ./api:/app
+      - .:/project  # ✅ Mount entire project
+      - ./api:/app  # ✅ Keep API folder mounted for compatibility
       - ./downloads:/app/downloads
       - model_cache:/root/.cache/huggingface  # ✅ Whisper model cache
       - torch_cache:/root/.cache/torch        # ✅ PyTorch cache
       - transformers_cache:/root/.cache/transformers  # ✅ Transformers cache
+      - chromadb_data:/app/.chromadb  # ✅ ChromaDB vector database
     depends_on:
       - db
     networks:
@@ -122,3 +124,4 @@ volumes:
   model_cache:          # ✅ Hugging Face model cache
   torch_cache:          # ✅ PyTorch cache
   transformers_cache:   # ✅ Transformers cache
+  chromadb_data:        # ✅ ChromaDB vector database
