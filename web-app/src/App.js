@@ -204,6 +204,41 @@ function App() {
                               <strong>Category:</strong>{" "}
                               {verdict.medical_category}
                             </div>
+                            
+                            {/* ✅ Add sources section */}
+                            {verdict.sources && verdict.sources.length > 0 && (
+                              <div className="sources-section">
+                                <strong>📚 Medical Sources:</strong>
+                                <div className="sources-list">
+                                  {verdict.sources.map((source, sourceIndex) => (
+                                    <div key={sourceIndex} className="source-item">
+                                      <div className="source-header">
+                                        <span className="source-name">
+                                          {source.source_url ? (
+                                            <a 
+                                              href={source.source_url} 
+                                              target="_blank" 
+                                              rel="noopener noreferrer"
+                                              className="source-link"
+                                            >
+                                              {source.source_name}
+                                            </a>
+                                          ) : (
+                                            source.source_name
+                                          )}
+                                        </span>
+                                        <span className={`relevance-badge ${source.relevance_badge || 'default'}`}>
+                                          {source.relevance_display || 'Relevant'}
+                                        </span>
+                                      </div>
+                                      <div className="source-preview">
+                                        {source.content_preview}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         ))
                       : // Fallback: show claims without verdicts

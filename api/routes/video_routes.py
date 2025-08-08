@@ -16,7 +16,7 @@ from databases import get_session
 # Import RAG utilities
 rag_utils_path = '/project/rag'  # ✅ Use mounted project path
 sys.path.append(rag_utils_path)
-print(f"🔎 Attempting to import utils from: {rag_utils_path}")
+# print(f"🔎 Attempting to import utils from: {rag_utils_path}")
 try:
     from utils import get_chroma_collection
     RAG_AVAILABLE = True
@@ -24,8 +24,8 @@ try:
 except ImportError as e:
     RAG_AVAILABLE = False
     print(f"⚠️ RAG utilities not available: {e}")
-    print(f"   RAG path exists: {os.path.exists(rag_utils_path)}")
-    print(f"   Utils file exists: {os.path.exists(os.path.join(rag_utils_path, 'utils.py'))}")
+    # print(f"   RAG path exists: {os.path.exists(rag_utils_path)}")
+    # print(f"   Utils file exists: {os.path.exists(os.path.join(rag_utils_path, 'utils.py'))}")
 
 def get_db():
     session_gen = get_session()
@@ -174,7 +174,34 @@ Transcript to analyze:
 
         headers = {"Content-Type": "application/json"}
 
-        response = requests.post(url, json=payload, headers=headers, timeout=60)
+        # Add retry logic for API overload
+        max_retries = 3
+        retry_delay = 5  # seconds
+        
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(url, json=payload, headers=headers, timeout=60)
+                
+                if response.status_code == 200:
+                    break
+                elif response.status_code == 503:
+                    print(f"⚠️ Gemini API overloaded (attempt {attempt + 1}/{max_retries}). Retrying in {retry_delay} seconds...")
+                    if attempt < max_retries - 1:  # Don't sleep on last attempt
+                        import time
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                        continue
+                else:
+                    print(f"❌ Gemini API error: {response.status_code} - {response.text}")
+                    return []
+            except requests.exceptions.RequestException as e:
+                print(f"❌ Request error (attempt {attempt + 1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+                return []
 
         if response.status_code == 200:
             response_data = response.json()
@@ -305,7 +332,34 @@ Claim to fact-check:
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
         headers = {"Content-Type": "application/json"}
 
-        response = requests.post(url, json=payload, headers=headers, timeout=60)
+        # Add retry logic for API overload
+        max_retries = 3
+        retry_delay = 5  # seconds
+        
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(url, json=payload, headers=headers, timeout=60)
+                
+                if response.status_code == 200:
+                    break
+                elif response.status_code == 503:
+                    print(f"⚠️ Gemini API overloaded during fact-check (attempt {attempt + 1}/{max_retries}). Retrying in {retry_delay} seconds...")
+                    if attempt < max_retries - 1:
+                        import time
+                        time.sleep(retry_delay)
+                        retry_delay *= 2
+                        continue
+                else:
+                    print(f"❌ Gemini API error during fact-checking: {response.status_code} - {response.text}")
+                    return None
+            except requests.exceptions.RequestException as e:
+                print(f"❌ Request error during fact-check (attempt {attempt + 1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+                return None
 
         if response.status_code == 200:
             response_data = response.json()
@@ -325,7 +379,47 @@ Claim to fact-check:
                             )
 
                         verdict = json.loads(extracted_text)
-                        print(f"✅ Fact-checked claim with RAG: {verdict.get('verdict', 'UNKNOWN')}")
+                        
+                        # ✅ Add source information to the verdict
+                        if relevant_docs:
+                            verdict['sources'] = []
+                            for i, doc in enumerate(relevant_docs):
+                                # Convert to more intuitive relevance ranking
+                                if i == 0:
+                                    relevance_display = "Most Relevant"
+                                    relevance_badge = "primary"
+                                elif i == 1:
+                                    relevance_display = "Moderately Relevant"
+                                    relevance_badge = "secondary"
+                                else:
+                                    relevance_display = "Supporting Evidence"
+                                    relevance_badge = "tertiary"
+                                
+                                source_info = {
+                                    'content_preview': doc['content'][:200] + "..." if len(doc['content']) > 200 else doc['content'],
+                                    'relevance_score': doc['relevance_score'],
+                                    'relevance_display': relevance_display,  # ✅ User-friendly display
+                                    'relevance_badge': relevance_badge,      # ✅ For UI styling
+                                    'source_type': 'medical_literature'
+                                }
+                                # Try to identify the source from content
+                                content_lower = doc['content'].lower()
+                                if 'who.int' in content_lower or 'world health' in content_lower:
+                                    source_info['source_name'] = 'World Health Organization (WHO)'
+                                    source_info['source_url'] = 'https://www.who.int'
+                                elif 'cdc.gov' in content_lower or 'centers for disease control' in content_lower:
+                                    source_info['source_name'] = 'Centers for Disease Control (CDC)'
+                                    source_info['source_url'] = 'https://www.cdc.gov'
+                                elif 'mayoclinic.org' in content_lower or 'mayo clinic' in content_lower:
+                                    source_info['source_name'] = 'Mayo Clinic'
+                                    source_info['source_url'] = 'https://www.mayoclinic.org'
+                                else:
+                                    source_info['source_name'] = 'Medical Literature'
+                                    source_info['source_url'] = None
+                                
+                                verdict['sources'].append(source_info)
+                        
+                        print(f"✅ Fact-checked claim with RAG: {verdict.get('verdict', 'UNKNOWN')} using {len(relevant_docs)} sources")
                         return verdict
 
                     except json.JSONDecodeError:
