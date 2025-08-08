@@ -9,15 +9,17 @@ Fact_Checker is an innovative platform for.......
 - pgAdmin for database management
 - Database initialization scripts
 - Docker Compose
+- RAG (Retrieval Augmented Generation) system with ChromaDB for fact-checking
 
 ## Services
 
-| Service              | URL                                 |
-|----------------------|-------------------------------------|
-| PostgreSQL           | `postgres://localhost:5432`         |
-| pgAdmin              | `http://localhost:5050`             |
-| React App            | `http://localhost:3000`             |
-| FastAPI API Server   | `http://localhost:4000`             |
+| Service              | URL                                 | Description                           |
+|----------------------|-------------------------------------|---------------------------------------|
+| PostgreSQL           | `postgres://localhost:5432`         | Main application database             |
+| pgAdmin              | `http://localhost:5050`             | Database management interface         |
+| React App            | `http://localhost:3000`             | Frontend web application              |
+| FastAPI API Server   | `http://localhost:4000`             | Backend API with RAG integration     |
+| ChromaDB             | Local file storage in `.chromadb/`  | Vector database for medical knowledge |
 
 ## Usage
 
@@ -76,6 +78,71 @@ and then restart the api container:
 docker compose down
 docker compose up --build api
 ```
+
+## RAG System Setup (ChromaDB & Medical Knowledge Base)
+
+The project includes a RAG (Retrieval Augmented Generation) system that uses ChromaDB to store and query medical information for fact-checking claims about health topics.
+
+### Setting up the RAG Virtual Environment
+
+1. Navigate to the RAG directory:
+```shell
+cd rag/
+```
+
+2. Create and activate a Python virtual environment:
+```shell
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+3. Install the required dependencies:
+```shell
+pip install -r requirements.txt
+```
+
+> **Note:** The RAG system uses ChromaDB v0.4.22 and NumPy v1.24.3 for compatibility. These specific versions are required for proper functioning.
+
+### ChromaDB Knowledge Base Setup
+
+1. **Index Medical Sources**: The system uses medical information from trusted sources (WHO, CDC, Mayo Clinic, etc.). To populate the ChromaDB database:
+```shell
+cd rag/
+source venv/bin/activate
+python index_from_url.py
+```
+
+2. **Test ChromaDB Setup**: Verify that the knowledge base is properly indexed:
+```shell
+python test_chromadb.py
+```
+
+3. **ChromaDB Data Persistence**: The ChromaDB database is stored in `.chromadb/` directory at the project root. This ensures data persistence across container restarts.
+
+### RAG System Components
+
+- **`utils.py`**: Core utilities for web scraping, text chunking, embeddings, and ChromaDB operations
+- **`index_from_url.py`**: Script to index medical content from URLs listed in `diabet_urls.txt`
+- **`test_chromadb.py`**: Test script to verify ChromaDB functionality and search capabilities
+- **`diabet_urls.txt`**: List of trusted medical sources for diabetes-related information
+- **`requirements.txt`**: All Python dependencies with exact versions for the RAG environment
+
+### RAG Integration with API
+
+The RAG system is integrated into the main API through:
+- Medical claim fact-checking with source citations
+- Similarity search using sentence transformers
+- Multi-language support (Arabic to English translation)
+- Source relevance scoring and user-friendly displays
+
+### Troubleshooting RAG Setup
+
+If you encounter issues:
+
+1. **ChromaDB Version Error**: Ensure you're using ChromaDB 0.4.22, not newer versions
+2. **NumPy Compatibility**: Use NumPy 1.24.3 for compatibility with ChromaDB 0.4.22
+3. **Empty Database**: Run `index_from_url.py` to populate the knowledge base
+4. **Permission Issues**: Ensure `.chromadb/` directory has proper write permissions
 
 ## Managing Secrets and Environment Variables
 
