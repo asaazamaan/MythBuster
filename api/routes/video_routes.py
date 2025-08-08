@@ -18,7 +18,7 @@ rag_utils_path = '/project/rag'  # ✅ Use mounted project path
 sys.path.append(rag_utils_path)
 # print(f"🔎 Attempting to import utils from: {rag_utils_path}")
 try:
-    from utils import get_chroma_collection
+    from utils import get_chroma_collection, get_source_name_from_url
     RAG_AVAILABLE = True
     print("✅ RAG utilities imported successfully")
 except ImportError as e:
@@ -96,9 +96,12 @@ def get_relevant_context(claim, max_results=3):
         if results['documents'] and results['documents'][0]:
             for i, doc in enumerate(results['documents'][0]):
                 distance = results['distances'][0][i] if results['distances'] else 1.0
+                metadata = results['metadatas'][0][i] if results['metadatas'] and results['metadatas'][0] else {}
+                
                 relevant_docs.append({
                     'content': doc,
-                    'relevance_score': 1 - distance  # Convert distance to relevance score
+                    'relevance_score': 1 - distance,  # Convert distance to relevance score
+                    'metadata': metadata  # ✅ Include metadata (contains source_url)
                 })
                 print(f"📄 Retrieved relevant doc {i+1} (relevance: {1-distance:.3f})")
         
@@ -383,12 +386,24 @@ Claim to fact-check:
                         # ✅ Add source information to the verdict
                         if relevant_docs:
                             verdict['sources'] = []
+                            seen_urls = set()  # ✅ Track URLs to avoid duplicates
+                            
                             for i, doc in enumerate(relevant_docs):
-                                # Convert to more intuitive relevance ranking
-                                if i == 0:
+                                # Get source URL from metadata
+                                source_url = doc.get('metadata', {}).get('source_url')
+                                
+                                # ✅ Skip if we've already seen this URL
+                                if source_url in seen_urls:
+                                    continue
+                                
+                                seen_urls.add(source_url)
+                                
+                                # Convert to more intuitive relevance ranking based on current position
+                                current_position = len(verdict['sources'])  # ✅ Use actual position in final list
+                                if current_position == 0:
                                     relevance_display = "Most Relevant"
                                     relevance_badge = "primary"
-                                elif i == 1:
+                                elif current_position == 1:
                                     relevance_display = "Moderately Relevant"
                                     relevance_badge = "secondary"
                                 else:
@@ -402,24 +417,17 @@ Claim to fact-check:
                                     'relevance_badge': relevance_badge,      # ✅ For UI styling
                                     'source_type': 'medical_literature'
                                 }
-                                # Try to identify the source from content
-                                content_lower = doc['content'].lower()
-                                if 'who.int' in content_lower or 'world health' in content_lower:
-                                    source_info['source_name'] = 'World Health Organization (WHO)'
-                                    source_info['source_url'] = 'https://www.who.int'
-                                elif 'cdc.gov' in content_lower or 'centers for disease control' in content_lower:
-                                    source_info['source_name'] = 'Centers for Disease Control (CDC)'
-                                    source_info['source_url'] = 'https://www.cdc.gov'
-                                elif 'mayoclinic.org' in content_lower or 'mayo clinic' in content_lower:
-                                    source_info['source_name'] = 'Mayo Clinic'
-                                    source_info['source_url'] = 'https://www.mayoclinic.org'
-                                else:
-                                    source_info['source_name'] = 'Medical Literature'
-                                    source_info['source_url'] = None
+                                
+                                # ✅ Use URL from metadata instead of content analysis
+                                source_name, source_homepage = get_source_name_from_url(source_url)
+                                
+                                source_info['source_name'] = source_name
+                                source_info['source_url'] = source_url  # ✅ Use actual source URL
+                                source_info['source_homepage'] = source_homepage  # ✅ Homepage for display
                                 
                                 verdict['sources'].append(source_info)
                         
-                        print(f"✅ Fact-checked claim with RAG: {verdict.get('verdict', 'UNKNOWN')} using {len(relevant_docs)} sources")
+                        print(f"✅ Fact-checked claim with RAG: {verdict.get('verdict', 'UNKNOWN')} using {len(verdict.get('sources', []))} unique sources")
                         return verdict
 
                     except json.JSONDecodeError:

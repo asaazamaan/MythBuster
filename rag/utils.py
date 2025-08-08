@@ -41,3 +41,27 @@ def load_urls_from_file(file_path):
     except Exception as e:
         print(f"❌ Error reading URL file: {e}")
         return []
+
+def get_source_name_from_url(url):
+    """Extract a user-friendly source name from URL."""
+    if not url:
+        return "Medical Literature", None
+    
+    url_lower = url.lower()
+    
+    if 'who.int' in url_lower:
+        return 'World Health Organization (WHO)', 'https://www.who.int'
+    elif 'cdc.gov' in url_lower:
+        return 'Centers for Disease Control (CDC)', 'https://www.cdc.gov'
+    elif 'mayoclinic.org' in url_lower:
+        return 'Mayo Clinic', 'https://www.mayoclinic.org'
+    elif 'diabetes.org' in url_lower:
+        return 'American Diabetes Association', 'https://diabetes.org'
+    elif 'hopkinsdiabetesinfo.org' in url_lower:
+        return 'Johns Hopkins Diabetes Info', 'https://hopkinsdiabetesinfo.org'
+    elif 'hopkinsmedicine.org' in url_lower:
+        return 'Johns Hopkins Medicine', 'https://www.hopkinsmedicine.org'
+    elif 'verywellhealth.com' in url_lower:
+        return 'Verywell Health', 'https://www.verywellhealth.com'
+    else:
+        return "Medical Literature", url

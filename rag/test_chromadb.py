@@ -49,7 +49,11 @@ def test_chromadb():
             if results['documents'] and results['documents'][0]:
                 for i, doc in enumerate(results['documents'][0]):
                     distance = results['distances'][0][i] if results['distances'] else 'N/A'
-                    print(f"   📄 Result {i+1} (distance: {distance:.3f}): {doc[:80]}...")
+                    metadata = results['metadatas'][0][i] if results['metadatas'] and results['metadatas'][0] else {}
+                    source_url = metadata.get('source_url', 'No URL')
+                    print(f"   📄 Result {i+1} (distance: {distance:.3f})")
+                    print(f"      🔗 Source: {source_url}")
+                    print(f"      📝 Content: {doc[:80]}...")
             else:
                 print("   ⚠️ No results found")
         

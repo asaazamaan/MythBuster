@@ -15,7 +15,16 @@ def index_urls(urls):
             chunks = fetch_and_chunk(url)
             embeddings = embedder.encode(chunks).tolist()
             ids = [str(uuid4()) for _ in chunks]
-            collection.add(documents=chunks, embeddings=embeddings, ids=ids)
+            
+            # Create metadata for each chunk with the source URL
+            metadatas = [{"source_url": url} for _ in chunks]
+            
+            collection.add(
+                documents=chunks, 
+                embeddings=embeddings, 
+                ids=ids,
+                metadatas=metadatas
+            )
             print(f"✅ Indexed {len(chunks)} chunks from {url}")
         except Exception as e:
             print(f"❌ Failed on {url}: {e}")
