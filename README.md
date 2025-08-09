@@ -105,12 +105,20 @@ pip install -r requirements.txt
 
 ### ChromaDB Knowledge Base Setup
 
-1. **Index Medical Sources**: The system uses medical information from trusted sources (WHO, CDC, Mayo Clinic, etc.). To populate the ChromaDB database:
+1. **Index Medical Sources (trusted sites)**:
 ```shell
 cd rag/
 source venv/bin/activate
 python index_from_url.py
 ```
+
+1b. **Optional: Index arXiv papers (same collection, equal weight)**:
+```shell
+cd rag/
+source venv/bin/activate
+python index_from_arxiv.py
+```
+- This will fetch up to 150 arXiv papers for “diabetes” and index full PDF text when available (fallback to abstracts). Data is stored in the same ChromaDB collection with metadata, no special weighting.
 
 2. **Test ChromaDB Setup**: Verify that the knowledge base is properly indexed:
 ```shell
@@ -123,6 +131,7 @@ python test_chromadb.py
 
 - **`utils.py`**: Core utilities for web scraping, text chunking, embeddings, and ChromaDB operations
 - **`index_from_url.py`**: Script to index medical content from URLs listed in `diabet_urls.txt`
+- **`index_from_arxiv.py`**: Script to index arXiv titles/abstracts or full PDFs into the same collection
 - **`test_chromadb.py`**: Test script to verify ChromaDB functionality and search capabilities
 - **`diabet_urls.txt`**: List of trusted medical sources for diabetes-related information
 - **`requirements.txt`**: All Python dependencies with exact versions for the RAG environment
