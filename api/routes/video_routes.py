@@ -98,12 +98,16 @@ def get_relevant_context(claim, max_results=3):
                 distance = results['distances'][0][i] if results['distances'] else 1.0
                 metadata = results['metadatas'][0][i] if results['metadatas'] and results['metadatas'][0] else {}
                 
+                # ✅ Simple relevance calculation for internal sorting only
+                relevance_score = max(0, 1 - distance)  # Ensure non-negative, just for sorting
+                
                 relevant_docs.append({
                     'content': doc,
-                    'relevance_score': 1 - distance,  # Convert distance to relevance score
+                    'relevance_score': relevance_score,  # ✅ Only for internal sorting
+                    'distance': distance,                # ✅ Raw distance for debugging
                     'metadata': metadata  # ✅ Include metadata (contains source_url)
                 })
-                print(f"📄 Retrieved relevant doc {i+1} (relevance: {1-distance:.3f})")
+                print(f"📄 Retrieved relevant doc {i+1} (distance: {distance:.3f})")
         
         return relevant_docs
         
@@ -385,47 +389,34 @@ Claim to fact-check:
                         
                         # ✅ Add source information to the verdict
                         if relevant_docs:
-                            verdict['sources'] = []
-                            seen_urls = set()  # ✅ Track URLs to avoid duplicates
-                            
-                            for i, doc in enumerate(relevant_docs):
-                                # Get source URL from metadata
-                                source_url = doc.get('metadata', {}).get('source_url')
-                                
-                                # ✅ Skip if we've already seen this URL
-                                if source_url in seen_urls:
-                                    continue
-                                
-                                seen_urls.add(source_url)
-                                
-                                # Convert to more intuitive relevance ranking based on current position
-                                current_position = len(verdict['sources'])  # ✅ Use actual position in final list
-                                if current_position == 0:
-                                    relevance_display = "Most Relevant"
-                                    relevance_badge = "primary"
-                                elif current_position == 1:
-                                    relevance_display = "Moderately Relevant"
-                                    relevance_badge = "secondary"
-                                else:
-                                    relevance_display = "Supporting Evidence"
-                                    relevance_badge = "tertiary"
-                                
-                                source_info = {
-                                    'content_preview': doc['content'][:200] + "..." if len(doc['content']) > 200 else doc['content'],
-                                    'relevance_score': doc['relevance_score'],
-                                    'relevance_display': relevance_display,  # ✅ User-friendly display
-                                    'relevance_badge': relevance_badge,      # ✅ For UI styling
-                                    'source_type': 'medical_literature'
-                                }
-                                
-                                # ✅ Use URL from metadata instead of content analysis
-                                source_name, source_homepage = get_source_name_from_url(source_url)
-                                
-                                source_info['source_name'] = source_name
-                                source_info['source_url'] = source_url  # ✅ Use actual source URL
-                                source_info['source_homepage'] = source_homepage  # ✅ Homepage for display
-                                
-                                verdict['sources'].append(source_info)
+                            # Build sources array with user-friendly relevance labels only (no percentages)
+                            if relevant_docs:
+                                verdict['sources'] = []
+                                seen_urls = set()
+                                for doc in relevant_docs:
+                                    source_url = (doc.get('metadata') or {}).get('source_url')
+                                    if source_url in seen_urls:
+                                        continue
+                                    seen_urls.add(source_url)
+                                    current_position = len(verdict['sources'])
+                                    relevance_display = (
+                                        'Most Relevant' if current_position == 0 else 'Moderately Relevant' if current_position == 1 else 'Supporting Evidence'
+                                    )
+                                    relevance_badge = (
+                                        'primary' if current_position == 0 else 'secondary' if current_position == 1 else 'tertiary'
+                                    )
+                                    # Assemble source info (exclude any numeric relevance fields)
+                                    source_name, source_homepage = get_source_name_from_url(source_url)
+                                    source_info = {
+                                        'content_preview': doc['content'][:200] + '...' if len(doc['content']) > 200 else doc['content'],
+                                        'relevance_display': relevance_display,
+                                        'relevance_badge': relevance_badge,
+                                        'source_type': 'medical_literature',
+                                        'source_name': source_name,
+                                        'source_url': source_url,
+                                        'source_homepage': source_homepage,
+                                    }
+                                    verdict['sources'].append(source_info)
                         
                         print(f"✅ Fact-checked claim with RAG: {verdict.get('verdict', 'UNKNOWN')} using {len(verdict.get('sources', []))} unique sources")
                         return verdict

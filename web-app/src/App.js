@@ -227,8 +227,12 @@ function App() {
                                             source.source_name
                                           )}
                                         </span>
-                                        <span className={`relevance-badge ${source.relevance_badge || 'default'}`}>
-                                          {source.relevance_display || 'Relevant'}
+                                        <span
+                                          className={`relevance-badge ${
+                                            source.relevance_badge || (sourceIndex === 0 ? 'primary' : sourceIndex === 1 ? 'secondary' : 'tertiary')
+                                          }`}
+                                        >
+                                          {source.relevance_display || (sourceIndex === 0 ? 'Most Relevant' : sourceIndex === 1 ? 'Moderately Relevant' : 'Supporting Evidence')}
                                         </span>
                                       </div>
                                       <div className="source-preview">
