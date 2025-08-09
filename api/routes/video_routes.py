@@ -72,15 +72,17 @@ Translate this Arabic medical text to English. Only return the English translati
         return arabic_text  # Fallback to original
 
 
-def get_relevant_context(claim, max_results=3):
-    """Retrieve relevant documents from ChromaDB for fact-checking context"""
+def get_relevant_context(claim, max_results=3, english_query_override: Optional[str] = None):
+    """Retrieve relevant documents from ChromaDB for fact-checking context.
+    If english_query_override is provided, it will be used directly without translation.
+    """
     try:
         if not RAG_AVAILABLE:
             print("⚠️ RAG not available, proceeding without context")
             return []
 
-        # ✅ Translate Arabic claim to English for better retrieval
-        english_claim = translate_to_english(claim)
+        # ✅ Use provided English override if available, else translate the Arabic claim
+        english_claim = english_query_override.strip() if english_query_override else translate_to_english(claim)
         print(f"🔍 Querying ChromaDB with: '{english_claim}'")
 
         # Get the ChromaDB collection
@@ -154,7 +156,7 @@ You must follow these rules strictly:
 1. The transcript may contain spelling errors, grammar mistakes, and conversational fillers. Ignore these errors and focus on understanding the intended meaning of the text.
 2. Read the transcript carefully to determine if the primary topic and claims are related to the medical field of "Diabetes" or diabetic care.
 3. If the transcript's claims are NOT about Diabetes, your output MUST be this exact JSON object:
-   {{"domain_is_diabetes": false, "claims": []}}
+   {"domain_is_diabetes": false, "claims": []}
 
 4. If the transcript's claims ARE about Diabetes, identify the main claims.
    - Prioritize extracting any claims that are likely to be medically misleading, exaggerated, or incorrect. If no such claims are found, then extract up to three significant factual claims. All claims must be written in correct Arabic, clearly and objectively, while preserving the speaker's original intended meaning without softening or interpreting it.
@@ -164,14 +166,14 @@ You must follow these rules strictly:
 
 5. Your output MUST be this exact JSON format, with the boolean value and claims array filled in based on the rules above. All claims must be written in Arabic. Do not include any other text, explanations, or conversational language.
 
-{{
+{
   "domain_is_diabetes": true,
   "claims": [
     "Arabic claim text 1",
     "Arabic claim text 2",
     "Arabic claim text 3"
   ]
-}}
+}
 
 Transcript to analyze:
 "{transcript_text}"
@@ -231,6 +233,8 @@ Transcript to analyze:
 
                         if parsed_response.get("domain_is_diabetes", False):
                             claims = parsed_response.get("claims", [])
+                            # Enforce max 3 claims
+                            claims = [c.strip() for c in claims if c and isinstance(c, str)][:3]
                             print(f"✅ Diabetes video detected. Claims: {len(claims)}")
                             return claims
                         else:
@@ -254,6 +258,288 @@ Transcript to analyze:
 
     except Exception as e:
         print(f"❌ Error extracting claims: {str(e)}")
+        return []
+
+
+def extract_claims_with_translation(transcript_text: str, max_claims: int = 3):
+    """Single LLM call to extract up to max_claims claims as Arabic + English pairs.
+    Returns a list of dicts: [{"ar": str, "en": str}, ...]
+    """
+    try:
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            print("⚠️ Warning: GEMINI_API_KEY not found, skipping claim extraction")
+            return []
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+
+        prompt = f"""
+You are an expert medical claim extractor for an "AI MythBuster" project. Analyze the transcript and extract up to {max_claims} distinct, verifiable claims about Diabetes.
+
+Rules:
+- If the transcript is NOT about Diabetes, output exactly: {{"domain_is_diabetes": false, "claims": []}}
+- If it IS about Diabetes, return a JSON with at most {max_claims} claims.
+- Each claim must be an object with Arabic text in "ar" and its precise English translation in "en".
+- Keep claims concise and objective.
+- Do NOT include any additional text or explanations.
+
+Output JSON format:
+{{
+  "domain_is_diabetes": true,
+  "claims": [
+    {{"ar": "Arabic claim text 1", "en": "English translation 1"}},
+    {{"ar": "Arabic claim text 2", "en": "English translation 2"}},
+    {{"ar": "Arabic claim text 3", "en": "English translation 3"}}
+  ]
+}}
+
+Transcript to analyze:
+"{transcript_text}"
+"""
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+        headers = {"Content-Type": "application/json"}
+
+        max_retries = 3
+        retry_delay = 5
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(url, json=payload, headers=headers, timeout=60)
+                if response.status_code == 200:
+                    break
+                elif response.status_code == 503:
+                    print(f"⚠️ Gemini API overloaded (attempt {attempt + 1}/{max_retries}). Retrying in {retry_delay}s...")
+                    if attempt < max_retries - 1:
+                        import time
+                        time.sleep(retry_delay)
+                        retry_delay *= 2
+                        continue
+                else:
+                    print(f"❌ Gemini API error: {response.status_code} - {response.text}")
+                    return []
+            except requests.exceptions.RequestException as e:
+                print(f"❌ Request error (attempt {attempt + 1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+                return []
+
+        if response.status_code == 200:
+            response_data = response.json()
+            candidates = response_data.get("candidates", [])
+            if candidates:
+                content = candidates[0].get("content", {})
+                parts = content.get("parts", [])
+                if parts:
+                    extracted_text = parts[0].get("text", "").strip()
+                    try:
+                        if extracted_text.startswith("```json"):
+                            extracted_text = extracted_text.replace("```json", "").replace("```", "").strip()
+                        parsed = json.loads(extracted_text)
+                        if not parsed.get("domain_is_diabetes", False):
+                            print("ℹ️ Not a diabetes video.")
+                            return []
+                        raw_claims = parsed.get("claims", [])
+                        claims = []
+                        for c in raw_claims:
+                            if isinstance(c, dict):
+                                ar = (c.get("ar") or "").strip()
+                                en = (c.get("en") or "").strip()
+                                if ar and en:
+                                    claims.append({"ar": ar, "en": en})
+                            elif isinstance(c, str) and c.strip():
+                                # If model returned plain strings, keep Arabic and translate quickly via translation endpoint
+                                ar = c.strip()
+                                en = translate_to_english(ar)
+                                claims.append({"ar": ar, "en": en})
+                            if len(claims) >= max_claims:
+                                break
+                        print(f"✅ Extracted {len(claims)} claims (AR+EN)")
+                        return claims
+                    except json.JSONDecodeError:
+                        print(f"❌ Failed to parse JSON response: {extracted_text}")
+                        # Fallback to prior extractor and translate
+                        arabic_claims = extract_claims_from_transcript(transcript_text)
+                        claims = []
+                        for ar in arabic_claims[:max_claims]:
+                            en = translate_to_english(ar)
+                            claims.append({"ar": ar, "en": en})
+                        return claims
+        return []
+    except Exception as e:
+        print(f"❌ Error extracting claims (AR+EN): {e}")
+        return []
+
+
+def _assemble_sources(relevant_docs: List[dict]):
+    """Build user-friendly sources list from relevant_docs with deduped URLs and labels."""
+    sources = []
+    seen_urls = set()
+    for doc in relevant_docs:
+        source_url = (doc.get('metadata') or {}).get('source_url')
+        if source_url in seen_urls:
+            continue
+        seen_urls.add(source_url)
+        current_position = len(sources)
+        relevance_display = (
+            'Most Relevant' if current_position == 0 else 'Moderately Relevant' if current_position == 1 else 'Supporting Evidence'
+        )
+        relevance_badge = (
+            'primary' if current_position == 0 else 'secondary' if current_position == 1 else 'tertiary'
+        )
+        source_name, source_homepage = get_source_name_from_url(source_url)
+        content = doc.get('content') or ''
+        sources.append({
+            'content_preview': content[:200] + '...' if len(content) > 200 else content,
+            'relevance_display': relevance_display,
+            'relevance_badge': relevance_badge,
+            'source_type': 'medical_literature',
+            'source_name': source_name,
+            'source_url': source_url,
+            'source_homepage': source_homepage,
+        })
+        if len(sources) >= 3:
+            break
+    return sources
+
+
+def batch_fact_check_claims(claims_ar_en: List[dict]):
+    """Fact-check multiple claims in a single Gemini call using RAG context per claim.
+    claims_ar_en: [{"ar": str, "en": str}, ...]
+    Returns: List[dict] verdicts aligned with the input order, each enriched with sources.
+    """
+    try:
+        if not claims_ar_en:
+            return []
+
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            print("⚠️ Warning: GEMINI_API_KEY not found, skipping fact-checking")
+            return []
+
+        # Fetch RAG context for each claim (non-LLM operation)
+        contexts = []
+        for idx, item in enumerate(claims_ar_en):
+            ar = item.get('ar', '').strip()
+            en = item.get('en', '').strip()
+            relevant_docs = get_relevant_context(ar, max_results=3, english_query_override=en)
+            contexts.append({
+                'ar': ar,
+                'en': en,
+                'relevant_docs': relevant_docs,
+                'context_texts': [d['content'] for d in relevant_docs]
+            })
+        print(f"✅ Prepared RAG context for {len(contexts)} claims")
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+
+        # Build a single prompt including all claims and their context snippets
+        claims_block = []
+        for i, c in enumerate(contexts, start=1):
+            ctx = "\n\n".join([f"Document {j+1}:\n{txt}" for j, txt in enumerate(c['context_texts'])]) if c['context_texts'] else ""
+            claims_block.append({
+                'id': i,
+                'claim_ar': c['ar'],
+                'claim_en': c['en'],
+                'context': ctx
+            })
+
+        instruction = {
+            "role": "system",
+            "content": (
+                "You are an expert medical fact-checker for diabetes claims. For each claim, return a JSON array of objects in the same order as input, with fields: "
+                "claim (original Arabic), verdict (TRUE|FALSE|PARTIALLY_TRUE|INSUFFICIENT_INFO), confidence (0.0-1.0), "
+                "reasoning (brief Arabic), medical_category (treatment|prevention|symptoms|causes|diet|lifestyle). "
+                "Use provided context documents if helpful, but do not include citations. Output only valid JSON, no extra text."
+            )
+        }
+
+        # Prepare prompt text with explicit JSON schema
+        prompt_text = """
+You are an expert medical fact-checker for diabetes claims. Evaluate each claim below.
+For each claim, consider the provided context documents (if any). If context is insufficient, use established medical knowledge.
+
+Return ONLY a JSON array of objects in the same order as input, each with this exact schema:
+{
+  "claim": "Arabic claim text",
+  "verdict": "TRUE|FALSE|PARTIALLY_TRUE|INSUFFICIENT_INFO",
+  "confidence": 0.85,
+  "reasoning": "Brief medical explanation in Arabic",
+  "medical_category": "treatment|prevention|symptoms|causes|diet|lifestyle"
+}
+
+CLAIMS TO EVALUATE:
+""".strip()
+        # Append claims block as JSON to reduce formatting mistakes
+        prompt_text += "\n" + json.dumps(claims_block, ensure_ascii=False, indent=2)
+
+        payload = {"contents": [{"parts": [{"text": prompt_text}]}]}
+        headers = {"Content-Type": "application/json"}
+
+        # Retry logic
+        max_retries = 3
+        retry_delay = 5
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(url, json=payload, headers=headers, timeout=90)
+                if response.status_code == 200:
+                    break
+                elif response.status_code == 503:
+                    print(f"⚠️ Gemini API overloaded during batch fact-check (attempt {attempt + 1}/{max_retries}). Retrying in {retry_delay}s...")
+                    if attempt < max_retries - 1:
+                        import time
+                        time.sleep(retry_delay)
+                        retry_delay *= 2
+                        continue
+                else:
+                    print(f"❌ Gemini API error during batch fact-check: {response.status_code} - {response.text}")
+                    return []
+            except requests.exceptions.RequestException as e:
+                print(f"❌ Request error during batch fact-check (attempt {attempt + 1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+                return []
+
+        if response.status_code == 200:
+            response_data = response.json()
+            candidates = response_data.get("candidates", [])
+            if candidates:
+                content = candidates[0].get("content", {})
+                parts = content.get("parts", [])
+                if parts:
+                    extracted_text = parts[0].get("text", "").strip()
+                    try:
+                        if extracted_text.startswith("```json"):
+                            extracted_text = extracted_text.replace("```json", "").replace("```", "").strip()
+                        parsed_list = json.loads(extracted_text)
+                        if not isinstance(parsed_list, list):
+                            print("⚠️ Model did not return a JSON array; attempting to coerce.")
+                            parsed_list = [parsed_list]
+                        # Align results with inputs and enrich with sources
+                        verdicts = []
+                        for i, item in enumerate(parsed_list[:len(contexts)]):
+                            v = {
+                                'claim': item.get('claim') or contexts[i]['ar'],
+                                'verdict': item.get('verdict', 'INSUFFICIENT_INFO'),
+                                'confidence': item.get('confidence', 0.5),
+                                'reasoning': item.get('reasoning', ''),
+                                'medical_category': item.get('medical_category', 'treatment'),
+                            }
+                            # Enrich with sources from previously fetched relevant docs
+                            v['sources'] = _assemble_sources(contexts[i]['relevant_docs'])
+                            verdicts.append(v)
+                        print(f"✅ Batch fact-checked {len(verdicts)} claims successfully")
+                        return verdicts
+                    except json.JSONDecodeError:
+                        print(f"❌ Failed to parse batch fact-check JSON response: {extracted_text}")
+                        return []
+        return []
+    except Exception as e:
+        print(f"❌ Error in batch fact-checking: {e}")
         return []
 
 
@@ -493,16 +779,16 @@ async def process_video(request: VideoProcessRequest, db: Session = Depends(get_
         transcription = transcription_result["transcriptions"][0]
         print(f"🎤 Transcribed: {transcription['filename']}")
 
-        # Extract claims and fact-check them
-        claims = []
-        verdicts = []
+        # Extract claims (AR+EN) and batch fact-check them
+        claims: List[str] = []
+        verdicts: List[dict] = []
         if transcription["success"]:
-            print(f"🔍 Extracting claims from: {transcription['filename']}")
-            claims = extract_claims_from_transcript(transcription["transcription"])
-            
+            print(f"🔍 Extracting up to 3 claims (AR+EN) from: {transcription['filename']}")
+            claims_ar_en = extract_claims_with_translation(transcription["transcription"], max_claims=3)
+            claims = [c.get('ar') for c in claims_ar_en if c.get('ar')][:3]
             if claims:
-                print(f"🔍 Fact-checking {len(claims)} claims individually")
-                verdicts = fact_check_claims(claims)
+                print(f"🔍 Batch fact-checking {len(claims)} claims")
+                verdicts = batch_fact_check_claims(claims_ar_en)
                 print(f"✅ Successfully fact-checked {len(verdicts)} out of {len(claims)} claims")
 
         print(f"✅ Extracted {len(claims)} claims with {len(verdicts)} fact-checks")
