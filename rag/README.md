@@ -35,7 +35,13 @@ python index_from_url.py
 # Verify ChromaDB functionality
 python test_chromadb.py
 ```
-
+##################Ahmed
+cd rag
+source ../venv/Scripts/activate   # (Windows: ..\venv\Scripts\activate)
+python index_from_url.py
+python index_from_arxiv.py
+python test_chromadb.py
+################################
 ## File Structure
 
 ```

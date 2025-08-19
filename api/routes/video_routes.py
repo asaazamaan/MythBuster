@@ -16,7 +16,7 @@ from databases import get_session
 # Import RAG utilities
 rag_utils_path = '/project/rag'  # ✅ Use mounted project path
 sys.path.append(rag_utils_path)
-# print(f"🔎 Attempting to import utils from: {rag_utils_path}")
+print(f"🔎 Attempting to import utils from: {rag_utils_path}")
 try:
     from utils import get_chroma_collection, get_source_name_from_url
     RAG_AVAILABLE = True
