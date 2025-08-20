@@ -1,127 +1,47 @@
 import os
-import requests
-import json
 import sys
+import json
+import time
+import re
+import datetime
+import requests
+from typing import List, Optional, Dict, Any, Tuple
+from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
+
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from typing import List, Optional
 from sqlalchemy.orm import Session
-import datetime
 
 from services.video_downloader_service import VideoDownloaderService
 from services.transcription_service import TranscriptionService
 from models.video import Video
 from databases import get_session
 
-# Import RAG utilities
-rag_utils_path = '/project/rag'  # ✅ Use mounted project path
+# =============== RAG utilities import ======================
+# We keep using the mounted project path (/project) so api can import /project/rag/utils.py
+RAG_AVAILABLE = False
+rag_utils_path = "/project/rag"
 sys.path.append(rag_utils_path)
-print(f"🔎 Attempting to import utils from: {rag_utils_path}")
 try:
     from utils import get_chroma_collection, get_source_name_from_url
+
     RAG_AVAILABLE = True
-    print("✅ RAG utilities imported successfully")
-except ImportError as e:
-    RAG_AVAILABLE = False
+    print("✅ RAG utilities imported successfully from /project/rag")
+except Exception as e:
     print(f"⚠️ RAG utilities not available: {e}")
-    # print(f"   RAG path exists: {os.path.exists(rag_utils_path)}")
-    # print(f"   Utils file exists: {os.path.exists(os.path.join(rag_utils_path, 'utils.py'))}")
+# ===========================================================
 
-def get_db():
+
+# ----------------- FastAPI plumbing ------------------------
+def get_db() -> Session:
     session_gen = get_session()
-    return next(session_gen)  # Extract Session from generator
-
-
-def translate_to_english(arabic_text):
-    """Translate Arabic text to English for ChromaDB querying"""
-    try:
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            print("⚠️ No API key for translation, using original text")
-            return arabic_text  # Fallback to original
-            
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-        
-        prompt = f"""
-Translate this Arabic medical text to English. Only return the English translation, no other text or explanations:
-
-{arabic_text}
-"""
-        
-        payload = {"contents": [{"parts": [{"text": prompt}]}]}
-        headers = {"Content-Type": "application/json"}
-        
-        response = requests.post(url, json=payload, headers=headers, timeout=30)
-        
-        if response.status_code == 200:
-            response_data = response.json()
-            candidates = response_data.get("candidates", [])
-            if candidates:
-                content = candidates[0].get("content", {})
-                parts = content.get("parts", [])
-                if parts:
-                    english_text = parts[0].get("text", "").strip()
-                    print(f"🔄 Translated: '{arabic_text}' → '{english_text}'")
-                    return english_text
-        
-        print(f"⚠️ Translation failed, using original text")
-        return arabic_text  # Fallback to original
-        
-    except Exception as e:
-        print(f"❌ Translation error: {e}")
-        return arabic_text  # Fallback to original
-
-
-def get_relevant_context(claim, max_results=3, english_query_override: Optional[str] = None):
-    """Retrieve relevant documents from ChromaDB for fact-checking context.
-    If english_query_override is provided, it will be used directly without translation.
-    """
-    try:
-        if not RAG_AVAILABLE:
-            print("⚠️ RAG not available, proceeding without context")
-            return []
-
-        # ✅ Use provided English override if available, else translate the Arabic claim
-        english_claim = english_query_override.strip() if english_query_override else translate_to_english(claim)
-        print(f"🔍 Querying ChromaDB with: '{english_claim}'")
-
-        # Get the ChromaDB collection
-        collection = get_chroma_collection()
-        
-        # Query for relevant documents using English translation
-        results = collection.query(
-            query_texts=[english_claim],  # ✅ Use translated text
-            n_results=max_results
-        )
-        
-        relevant_docs = []
-        if results['documents'] and results['documents'][0]:
-            for i, doc in enumerate(results['documents'][0]):
-                distance = results['distances'][0][i] if results['distances'] else 1.0
-                metadata = results['metadatas'][0][i] if results['metadatas'] and results['metadatas'][0] else {}
-                
-                # ✅ Simple relevance calculation for internal sorting only
-                relevance_score = max(0, 1 - distance)  # Ensure non-negative, just for sorting
-                
-                relevant_docs.append({
-                    'content': doc,
-                    'relevance_score': relevance_score,  # ✅ Only for internal sorting
-                    'distance': distance,                # ✅ Raw distance for debugging
-                    'metadata': metadata  # ✅ Include metadata (contains source_url)
-                })
-                print(f"📄 Retrieved relevant doc {i+1} (distance: {distance:.3f})")
-        
-        return relevant_docs
-        
-    except Exception as e:
-        print(f"⚠️ Error retrieving relevant context: {e}")
-        return []
+    return next(session_gen)
 
 
 router = APIRouter()
 
 
-# ✅ Updated request/response models
+# ----------------- Models (request/response) ----------------
 class VideoProcessRequest(BaseModel):
     url: str
 
@@ -134,681 +54,670 @@ class VideoProcessResponse(BaseModel):
     title: Optional[str]
     transcription: Optional[str]
     claims: List[str]
-    verdicts: List[dict]  # ✅ Added verdicts field
+    verdicts: List[
+        dict
+    ]  # Each element -> verdict for one claim (with unified sources[])
     processed_at: Optional[datetime.datetime]
-    from_cache: bool  # Indicates if result came from database
+    from_cache: bool
 
 
-def extract_claims_from_transcript(transcript_text):
-    """Extract diabetes claims from transcript - Returns only claims"""
+# ======================== Constants =========================
+# Trust allowlist (expand as needed)
+TRUSTED_DOMAINS = [
+    "who.int",
+    "cdc.gov",
+    "mayoclinic.org",
+    "nih.gov",
+    ".ncbi.nlm.nih.gov",
+    "clevelandclinic.org",
+    "webmd.com",
+    "diabetes.org",
+    "medlineplus.gov",
+    "nhs.uk",
+    "nature.com",
+    "nejm.org",
+    "jamanetwork.com",
+    "lancet.com",
+]
+TRUSTED_TLDS = [".gov", ".edu"]
+
+# Caps per plan (≤3 claims total per video)
+MAX_CLAIMS = 3
+MAX_RAG_SOURCES = 3
+MAX_WEB_TRUSTED_SOURCES = 3
+MAX_WEB_UNTRUSTED_SOURCES = 2  # stored for transparency; not fed to LLM
+SNIPPET_MAX_CHARS = 220
+
+GEMINI_MODEL_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+SERPER_SEARCH_URL = "https://google.serper.dev/search"
+
+
+# ===================== Small helpers ========================
+def canonicalize_url(url: str) -> str:
+    """Remove tracking params (& similar) for stable dedupe."""
+    try:
+        p = urlparse(url)
+        if not p.scheme:
+            return url  # leave odd cases untouched
+        # Strip typical tracking params
+        qs = [
+            (k, v)
+            for k, v in parse_qsl(p.query)
+            if not k.lower().startswith(("utm_", "gclid", "fbclid"))
+        ]
+        new_query = urlencode(qs)
+        return urlunparse(
+            (p.scheme, p.netloc.lower(), p.path, p.params, new_query, "")
+        )  # drop fragment
+    except Exception:
+        return url
+
+
+def get_domain(url: str) -> str:
+    try:
+        return urlparse(url).netloc.lower()
+    except Exception:
+        return ""
+
+
+def is_trusted_url(url: str) -> bool:
+    dom = get_domain(url)
+    if not dom:
+        return False
+    # direct match / suffix match
+    for td in TRUSTED_DOMAINS:
+        if dom == td or dom.endswith(td):
+            return True
+    # TLD check
+    return any(dom.endswith(tld) for tld in TRUSTED_TLDS)
+
+
+def safe_preview(text: str, limit: int = SNIPPET_MAX_CHARS) -> str:
+    if not text:
+        return ""
+    text = re.sub(r"\s+", " ", text).strip()
+    return (text[:limit] + "...") if len(text) > limit else text
+
+
+# =================== LLM-related helpers ====================
+def _gemini_post(prompt_text: str, timeout: int = 90) -> Optional[dict]:
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        print("⚠️ GEMINI_API_KEY missing.")
+        return None
+    url = f"{GEMINI_MODEL_URL}?key={api_key}"
+    payload = {"contents": [{"parts": [{"text": prompt_text}]}]}
+    headers = {"Content-Type": "application/json"}
+
+    # simple retry on overload
+    max_retries, delay = 3, 5
+    for attempt in range(max_retries):
+        try:
+            resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
+            if resp.status_code == 200:
+                return resp.json()
+            elif resp.status_code == 503 and attempt < max_retries - 1:
+                print(
+                    f"⚠️ Gemini overloaded (attempt {attempt+1}/{max_retries}); retrying in {delay}s"
+                )
+                time.sleep(delay)
+                delay *= 2
+                continue
+            else:
+                print(f"❌ Gemini error: {resp.status_code} - {resp.text}")
+                return None
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Gemini request error (attempt {attempt+1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                time.sleep(delay)
+                delay *= 2
+                continue
+            return None
+    return None
+
+
+def _extract_text_from_gemini_response(resp_json: dict) -> str:
+    try:
+        candidates = resp_json.get("candidates", [])
+        if not candidates:
+            return ""
+        parts = candidates[0].get("content", {}).get("parts", [])
+        if not parts:
+            return ""
+        return parts[0].get("text", "").strip()
+    except Exception:
+        return ""
+
+
+# ====================== Translation =========================
+def translate_to_english(arabic_text: str) -> str:
+    """Translate Arabic claim to English for better RAG recall."""
     try:
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
-            print("⚠️ Warning: GEMINI_API_KEY not found, skipping claim extraction")
+            return arabic_text
+        prompt = (
+            "Translate this Arabic medical text to English. "
+            "Only return the English translation, no other text:\n\n" + arabic_text
+        )
+        resp = _gemini_post(prompt, timeout=30)
+        if not resp:
+            return arabic_text
+        translated = _extract_text_from_gemini_response(resp) or arabic_text
+        return translated
+    except Exception:
+        return arabic_text
+
+
+# =================== Claim extraction =======================
+def extract_claims_from_transcript(transcript_text: str) -> List[str]:
+    """Fallback extractor (Arabic only)."""
+    try:
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
             return []
-
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-
         prompt = f"""
-You are an expert medical claim extractor for an "AI MythBuster" project. Your task is to analyze the provided video transcript to identify and extract factual claims ONLY.
+You are an expert medical claim extractor for an "AI MythBuster" project. Extract concise, verifiable claims about Diabetes from this transcript.
+If not about Diabetes, return exactly: {{"domain_is_diabetes": false, "claims": []}}.
 
-You must follow these rules strictly:
-1. The transcript may contain spelling errors, grammar mistakes, and conversational fillers. Ignore these errors and focus on understanding the intended meaning of the text.
-2. Read the transcript carefully to determine if the primary topic and claims are related to the medical field of "Diabetes" or diabetic care.
-3. If the transcript's claims are NOT about Diabetes, your output MUST be this exact JSON object:
-   {"domain_is_diabetes": false, "claims": []}
+Return ONLY JSON:
+{{"domain_is_diabetes": true, "claims": ["Arabic claim 1","Arabic claim 2","Arabic claim 3"]}}
 
-4. If the transcript's claims ARE about Diabetes, identify the main claims.
-   - Prioritize extracting any claims that are likely to be medically misleading, exaggerated, or incorrect. If no such claims are found, then extract up to three significant factual claims. All claims must be written in correct Arabic, clearly and objectively, while preserving the speaker's original intended meaning without softening or interpreting it.
-   - Focus on the single most significant claim if possible.
-   - If a single main claim cannot be identified, extract up to a maximum of three distinct, verifiable claims.
-   - Each claim should be a concise, objective statement written in Arabic language.
-
-5. Your output MUST be this exact JSON format, with the boolean value and claims array filled in based on the rules above. All claims must be written in Arabic. Do not include any other text, explanations, or conversational language.
-
-{
-  "domain_is_diabetes": true,
-  "claims": [
-    "Arabic claim text 1",
-    "Arabic claim text 2",
-    "Arabic claim text 3"
-  ]
-}
-
-Transcript to analyze:
+Transcript:
 "{transcript_text}"
-"""
-
-        payload = {"contents": [{"parts": [{"text": prompt}]}]}
-
-        headers = {"Content-Type": "application/json"}
-
-        # Add retry logic for API overload
-        max_retries = 3
-        retry_delay = 5  # seconds
-        
-        for attempt in range(max_retries):
-            try:
-                response = requests.post(url, json=payload, headers=headers, timeout=60)
-                
-                if response.status_code == 200:
-                    break
-                elif response.status_code == 503:
-                    print(f"⚠️ Gemini API overloaded (attempt {attempt + 1}/{max_retries}). Retrying in {retry_delay} seconds...")
-                    if attempt < max_retries - 1:  # Don't sleep on last attempt
-                        import time
-                        time.sleep(retry_delay)
-                        retry_delay *= 2  # Exponential backoff
-                        continue
-                else:
-                    print(f"❌ Gemini API error: {response.status_code} - {response.text}")
-                    return []
-            except requests.exceptions.RequestException as e:
-                print(f"❌ Request error (attempt {attempt + 1}/{max_retries}): {e}")
-                if attempt < max_retries - 1:
-                    import time
-                    time.sleep(retry_delay)
-                    retry_delay *= 2
-                    continue
-                return []
-
-        if response.status_code == 200:
-            response_data = response.json()
-            candidates = response_data.get("candidates", [])
-            if candidates:
-                content = candidates[0].get("content", {})
-                parts = content.get("parts", [])
-                if parts:
-                    extracted_text = parts[0].get("text", "").strip()
-
-                    try:
-                        if extracted_text.startswith("```json"):
-                            extracted_text = (
-                                extracted_text.replace("```json", "")
-                                .replace("```", "")
-                                .strip()
-                            )
-
-                        parsed_response = json.loads(extracted_text)
-
-                        if parsed_response.get("domain_is_diabetes", False):
-                            claims = parsed_response.get("claims", [])
-                            # Enforce max 3 claims
-                            claims = [c.strip() for c in claims if c and isinstance(c, str)][:3]
-                            print(f"✅ Diabetes video detected. Claims: {len(claims)}")
-                            return claims
-                        else:
-                            print("ℹ️ Video is not about diabetes, skipping claim extraction")
-                            return []
-
-                    except json.JSONDecodeError:
-                        print(f"❌ Failed to parse JSON response: {extracted_text}")
-                        # Fallback: extract claims without verdicts
-                        claims = [
-                            claim.strip()
-                            for claim in extracted_text.split("\n")
-                            if claim.strip()
-                        ]
-                        return claims[:3]
-
+        """.strip()
+        resp = _gemini_post(prompt, timeout=60)
+        if not resp:
             return []
-        else:
-            print(f"❌ Gemini API error: {response.status_code} - {response.text}")
+        txt = _extract_text_from_gemini_response(resp)
+        if txt.startswith("```json"):
+            txt = txt.replace("```json", "").replace("```", "").strip()
+        parsed = json.loads(txt)
+        if not parsed.get("domain_is_diabetes", False):
             return []
-
+        claims = [
+            c.strip()
+            for c in parsed.get("claims", [])
+            if isinstance(c, str) and c.strip()
+        ]
+        return claims[:MAX_CLAIMS]
     except Exception as e:
-        print(f"❌ Error extracting claims: {str(e)}")
+        print(f"❌ extract_claims_from_transcript error: {e}")
         return []
 
 
-def extract_claims_with_translation(transcript_text: str, max_claims: int = 3):
-    """Single LLM call to extract up to max_claims claims as Arabic + English pairs.
-    Returns a list of dicts: [{"ar": str, "en": str}, ...]
+def extract_claims_with_translation(
+    transcript_text: str, max_claims: int = MAX_CLAIMS
+) -> List[Dict[str, str]]:
+    """
+    Primary extractor: returns up to max_claims claims as [{"ar": "...", "en": "..."}].
+    Falls back to Arabic-only extractor if parsing fails.
     """
     try:
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
-            print("⚠️ Warning: GEMINI_API_KEY not found, skipping claim extraction")
             return []
-
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-
         prompt = f"""
-You are an expert medical claim extractor for an "AI MythBuster" project. Analyze the transcript and extract up to {max_claims} distinct, verifiable claims about Diabetes.
+You are an expert medical claim extractor for an "AI MythBuster" project.
+If NOT about Diabetes, return exactly: {{"domain_is_diabetes": false, "claims": []}}.
+If it IS about Diabetes, return up to {max_claims} claims with Arabic in "ar" and precise English in "en".
 
-Rules:
-- If the transcript is NOT about Diabetes, output exactly: {{"domain_is_diabetes": false, "claims": []}}
-- If it IS about Diabetes, return a JSON with at most {max_claims} claims.
-- Each claim must be an object with Arabic text in "ar" and its precise English translation in "en".
-- Keep claims concise and objective.
-- Do NOT include any additional text or explanations.
+Return ONLY JSON:
+{{"domain_is_diabetes": true, "claims":[{{"ar":"...","en":"..."}}, {{...}}] }}
 
-Output JSON format:
-{{
-  "domain_is_diabetes": true,
-  "claims": [
-    {{"ar": "Arabic claim text 1", "en": "English translation 1"}},
-    {{"ar": "Arabic claim text 2", "en": "English translation 2"}},
-    {{"ar": "Arabic claim text 3", "en": "English translation 3"}}
-  ]
-}}
-
-Transcript to analyze:
+Transcript:
 "{transcript_text}"
-"""
-        payload = {"contents": [{"parts": [{"text": prompt}]}]}
-        headers = {"Content-Type": "application/json"}
+        """.strip()
+        resp = _gemini_post(prompt, timeout=60)
+        if not resp:
+            # fallback
+            ar_only = extract_claims_from_transcript(transcript_text)
+            return [
+                {"ar": ar, "en": translate_to_english(ar)}
+                for ar in ar_only[:max_claims]
+            ]
 
-        max_retries = 3
-        retry_delay = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.post(url, json=payload, headers=headers, timeout=60)
-                if response.status_code == 200:
-                    break
-                elif response.status_code == 503:
-                    print(f"⚠️ Gemini API overloaded (attempt {attempt + 1}/{max_retries}). Retrying in {retry_delay}s...")
-                    if attempt < max_retries - 1:
-                        import time
-                        time.sleep(retry_delay)
-                        retry_delay *= 2
-                        continue
-                else:
-                    print(f"❌ Gemini API error: {response.status_code} - {response.text}")
-                    return []
-            except requests.exceptions.RequestException as e:
-                print(f"❌ Request error (attempt {attempt + 1}/{max_retries}): {e}")
-                if attempt < max_retries - 1:
-                    import time
-                    time.sleep(retry_delay)
-                    retry_delay *= 2
-                    continue
+        txt = _extract_text_from_gemini_response(resp)
+        if txt.startswith("```json"):
+            txt = txt.replace("```json", "").replace("```", "").strip()
+        try:
+            parsed = json.loads(txt)
+            if not parsed.get("domain_is_diabetes", False):
                 return []
-
-        if response.status_code == 200:
-            response_data = response.json()
-            candidates = response_data.get("candidates", [])
-            if candidates:
-                content = candidates[0].get("content", {})
-                parts = content.get("parts", [])
-                if parts:
-                    extracted_text = parts[0].get("text", "").strip()
-                    try:
-                        if extracted_text.startswith("```json"):
-                            extracted_text = extracted_text.replace("```json", "").replace("```", "").strip()
-                        parsed = json.loads(extracted_text)
-                        if not parsed.get("domain_is_diabetes", False):
-                            print("ℹ️ Not a diabetes video.")
-                            return []
-                        raw_claims = parsed.get("claims", [])
-                        claims = []
-                        for c in raw_claims:
-                            if isinstance(c, dict):
-                                ar = (c.get("ar") or "").strip()
-                                en = (c.get("en") or "").strip()
-                                if ar and en:
-                                    claims.append({"ar": ar, "en": en})
-                            elif isinstance(c, str) and c.strip():
-                                # If model returned plain strings, keep Arabic and translate quickly via translation endpoint
-                                ar = c.strip()
-                                en = translate_to_english(ar)
-                                claims.append({"ar": ar, "en": en})
-                            if len(claims) >= max_claims:
-                                break
-                        print(f"✅ Extracted {len(claims)} claims (AR+EN)")
-                        return claims
-                    except json.JSONDecodeError:
-                        print(f"❌ Failed to parse JSON response: {extracted_text}")
-                        # Fallback to prior extractor and translate
-                        arabic_claims = extract_claims_from_transcript(transcript_text)
-                        claims = []
-                        for ar in arabic_claims[:max_claims]:
-                            en = translate_to_english(ar)
-                            claims.append({"ar": ar, "en": en})
-                        return claims
-        return []
+            out: List[Dict[str, str]] = []
+            for c in parsed.get("claims", []):
+                if isinstance(c, dict):
+                    ar = (c.get("ar") or "").strip()
+                    en = (c.get("en") or "").strip()
+                    if ar and en:
+                        out.append({"ar": ar, "en": en})
+            if out:
+                return out[:max_claims]
+            # fallback path if model returned plain strings
+            ar_only = [
+                c for c in parsed.get("claims", []) if isinstance(c, str) and c.strip()
+            ]
+            out2 = [
+                {"ar": ar, "en": translate_to_english(ar)}
+                for ar in ar_only[:max_claims]
+            ]
+            return out2
+        except json.JSONDecodeError:
+            # fallback entirely
+            ar_only = extract_claims_from_transcript(transcript_text)
+            return [
+                {"ar": ar, "en": translate_to_english(ar)}
+                for ar in ar_only[:max_claims]
+            ]
     except Exception as e:
-        print(f"❌ Error extracting claims (AR+EN): {e}")
+        print(f"❌ extract_claims_with_translation error: {e}")
         return []
 
 
-def _assemble_sources(relevant_docs: List[dict]):
-    """Build user-friendly sources list from relevant_docs with deduped URLs and labels."""
-    sources = []
-    seen_urls = set()
-    for doc in relevant_docs:
-        source_url = (doc.get('metadata') or {}).get('source_url')
-        if source_url in seen_urls:
+# ===================== RAG retrieval ========================
+def get_relevant_context(
+    claim_ar: str,
+    max_results: int = MAX_RAG_SOURCES,
+    english_query_override: Optional[str] = None,
+) -> List[dict]:
+    """Retrieve relevant docs from ChromaDB for the claim (prefers EN query)."""
+    if not RAG_AVAILABLE:
+        return []
+    try:
+        english_query = (
+            english_query_override or translate_to_english(claim_ar)
+        ).strip()
+        collection = get_chroma_collection()
+        results = collection.query(query_texts=[english_query], n_results=max_results)
+        docs_out: List[dict] = []
+        if results.get("documents") and results["documents"][0]:
+            for i, doc in enumerate(results["documents"][0]):
+                distance = (
+                    results.get("distances", [[1.0]])[0][i]
+                    if results.get("distances")
+                    else 1.0
+                )
+                metadata = (
+                    results.get("metadatas", [[{}]])[0][i]
+                    if results.get("metadatas")
+                    else {}
+                )
+                docs_out.append(
+                    {
+                        "content": doc,
+                        "distance": distance,
+                        "relevance_score": max(0.0, 1.0 - float(distance)),
+                        "metadata": metadata,
+                    }
+                )
+        return docs_out
+    except Exception as e:
+        print(f"⚠️ get_relevant_context error: {e}")
+        return []
+
+
+def assemble_rag_sources(
+    relevant_docs: List[dict], cap: int = MAX_RAG_SOURCES
+) -> List[dict]:
+    """Turn RAG docs into uniform source objects with relevance_display bins."""
+    out, seen = [], set()
+    for idx, d in enumerate(relevant_docs):
+        meta = d.get("metadata") or {}
+        url = canonicalize_url(meta.get("source_url", "") or meta.get("url", ""))
+        if not url or url in seen:
             continue
-        seen_urls.add(source_url)
-        current_position = len(sources)
+        seen.add(url)
+        # bins by position (already ranked)
+        pos = len(out)
         relevance_display = (
-            'Most Relevant' if current_position == 0 else 'Moderately Relevant' if current_position == 1 else 'Supporting Evidence'
+            "Most Relevant"
+            if pos == 0
+            else "Moderately Relevant" if pos == 1 else "Supporting Evidence"
         )
-        relevance_badge = (
-            'primary' if current_position == 0 else 'secondary' if current_position == 1 else 'tertiary'
+        source_name, source_homepage = get_source_name_from_url(url)
+        content = d.get("content") or ""
+        out.append(
+            {
+                "source_type": "rag",
+                "trusted": True,
+                "source_name": source_name,
+                "source_url": url,
+                "source_homepage": source_homepage,
+                "content_preview": safe_preview(content),
+                "relevance_display": relevance_display,
+            }
         )
-        source_name, source_homepage = get_source_name_from_url(source_url)
-        content = doc.get('content') or ''
-        sources.append({
-            'content_preview': content[:200] + '...' if len(content) > 200 else content,
-            'relevance_display': relevance_display,
-            'relevance_badge': relevance_badge,
-            'source_type': 'medical_literature',
-            'source_name': source_name,
-            'source_url': source_url,
-            'source_homepage': source_homepage,
-        })
-        if len(sources) >= 3:
+        if len(out) >= cap:
             break
-    return sources
+    return out
 
 
-def batch_fact_check_claims(claims_ar_en: List[dict]):
-    """Fact-check multiple claims in a single Gemini call using RAG context per claim.
-    claims_ar_en: [{"ar": str, "en": str}, ...]
-    Returns: List[dict] verdicts aligned with the input order, each enriched with sources.
-    """
+# ===================== Web search ===========================
+def web_search_for_claim(
+    claim_text: str, lang: str = "ar", num: int = 5
+) -> Dict[str, List[dict]]:
+    """Return dict with 'trusted' and 'untrusted' lists of web results (title/snippet/url)."""
+    api_key = os.getenv("SERPER_API_KEY")
+    if not api_key:
+        print("⚠️ SERPER_API_KEY missing; skipping web search")
+        return {"trusted": [], "untrusted": []}
+
+    headers = {"X-API-KEY": api_key, "Content-Type": "application/json"}
+    payload = {"q": claim_text, "hl": lang, "num": num}
     try:
-        if not claims_ar_en:
-            return []
+        r = requests.post(SERPER_SEARCH_URL, headers=headers, json=payload, timeout=20)
+        if r.status_code != 200:
+            print(f"❌ Serper error: {r.status_code} - {r.text}")
+            return {"trusted": [], "untrusted": []}
+        organic = (r.json() or {}).get("organic", []) or []
 
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            print("⚠️ Warning: GEMINI_API_KEY not found, skipping fact-checking")
-            return []
+        trusted, untrusted = [], []
+        for res in organic[:num]:
+            url = canonicalize_url(res.get("link", "") or "")
+            if not url:
+                continue
+            item = {
+                "title": res.get("title") or "",
+                "snippet": res.get("snippet") or "",
+                "url": url,
+                "domain": get_domain(url),
+            }
+            (trusted if is_trusted_url(url) else untrusted).append(item)
+        return {"trusted": trusted, "untrusted": untrusted}
+    except Exception as e:
+        print(f"❌ web_search_for_claim error: {e}")
+        return {"trusted": [], "untrusted": []}
 
-        # Fetch RAG context for each claim (non-LLM operation)
-        contexts = []
-        for idx, item in enumerate(claims_ar_en):
-            ar = item.get('ar', '').strip()
-            en = item.get('en', '').strip()
-            relevant_docs = get_relevant_context(ar, max_results=3, english_query_override=en)
-            contexts.append({
-                'ar': ar,
-                'en': en,
-                'relevant_docs': relevant_docs,
-                'context_texts': [d['content'] for d in relevant_docs]
-            })
-        print(f"✅ Prepared RAG context for {len(contexts)} claims")
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+def assemble_web_sources(
+    trusted: List[dict], untrusted: List[dict]
+) -> Tuple[List[dict], List[dict]]:
+    """Convert web results into uniform source objects with relevance_badge."""
 
-        # Build a single prompt including all claims and their context snippets
-        claims_block = []
-        for i, c in enumerate(contexts, start=1):
-            ctx = "\n\n".join([f"Document {j+1}:\n{txt}" for j, txt in enumerate(c['context_texts'])]) if c['context_texts'] else ""
-            claims_block.append({
-                'id': i,
-                'claim_ar': c['ar'],
-                'claim_en': c['en'],
-                'context': ctx
-            })
-
-        instruction = {
-            "role": "system",
-            "content": (
-                "You are an expert medical fact-checker for diabetes claims. For each claim, return a JSON array of objects in the same order as input, with fields: "
-                "claim (original Arabic), verdict (TRUE|FALSE|PARTIALLY_TRUE|INSUFFICIENT_INFO), confidence (0.0-1.0), "
-                "reasoning (brief Arabic), medical_category (treatment|prevention|symptoms|causes|diet|lifestyle). "
-                "Use provided context documents if helpful, but do not include citations. Output only valid JSON, no extra text."
-            )
+    def to_source(res: dict, trusted_flag: bool, pos: int) -> dict:
+        source_name, source_homepage = get_source_name_from_url(res.get("url", ""))
+        badge = "primary" if trusted_flag else ("tertiary")
+        # if you want a middle badge for reputable but not in allowlist, add logic here
+        return {
+            "source_type": "web",
+            "trusted": trusted_flag,
+            "source_name": source_name,
+            "source_url": res.get("url", ""),
+            "source_homepage": source_homepage,
+            "content_preview": safe_preview(
+                res.get("snippet", "") or res.get("title", "")
+            ),
+            "relevance_badge": badge,
         }
 
-        # Prepare prompt text with explicit JSON schema
-        prompt_text = """
-You are an expert medical fact-checker for diabetes claims. Evaluate each claim below.
-For each claim, consider the provided context documents (if any). If context is insufficient, use established medical knowledge.
+    # Cap counts
+    t_out = [
+        to_source(res, True, i)
+        for i, res in enumerate(trusted[:MAX_WEB_TRUSTED_SOURCES])
+    ]
+    u_out = [
+        to_source(res, False, i)
+        for i, res in enumerate(untrusted[:MAX_WEB_UNTRUSTED_SOURCES])
+    ]
+    # Dedupe against themselves
+    seen = set()
+    deduped_t, deduped_u = [], []
+    for src in t_out + u_out:
+        url = src.get("source_url")
+        if url and url not in seen:
+            seen.add(url)
+            (deduped_t if src["trusted"] else deduped_u).append(src)
+    return deduped_t, deduped_u
 
-Return ONLY a JSON array of objects in the same order as input, each with this exact schema:
-{
-  "claim": "Arabic claim text",
-  "verdict": "TRUE|FALSE|PARTIALLY_TRUE|INSUFFICIENT_INFO",
-  "confidence": 0.85,
-  "reasoning": "Brief medical explanation in Arabic",
-  "medical_category": "treatment|prevention|symptoms|causes|diet|lifestyle"
-}
 
-CLAIMS TO EVALUATE:
-""".strip()
-        # Append claims block as JSON to reduce formatting mistakes
-        prompt_text += "\n" + json.dumps(claims_block, ensure_ascii=False, indent=2)
+# ============= Build per-claim context for LLM ==============
+def build_context_snippets_for_llm(
+    rag_sources: List[dict], web_trusted_sources: List[dict]
+) -> List[str]:
+    """Returns short snippets to feed the LLM; prefer RAG, then web trusted."""
+    snippets: List[str] = []
+    # RAG snippets: use content_preview (already from chunks)
+    for s in rag_sources:
+        preview = s.get("content_preview") or ""
+        if preview:
+            snippets.append(preview)
+    # Web trusted: use title + snippet
+    for s in web_trusted_sources:
+        combined = (s.get("content_preview") or "").strip()
+        if combined:
+            snippets.append(combined)
+    # keep it small
+    return snippets[: (MAX_RAG_SOURCES + MAX_WEB_TRUSTED_SOURCES)]
 
-        payload = {"contents": [{"parts": [{"text": prompt_text}]}]}
-        headers = {"Content-Type": "application/json"}
 
-        # Retry logic
-        max_retries = 3
-        retry_delay = 5
-        for attempt in range(max_retries):
-            try:
-                response = requests.post(url, json=payload, headers=headers, timeout=90)
-                if response.status_code == 200:
-                    break
-                elif response.status_code == 503:
-                    print(f"⚠️ Gemini API overloaded during batch fact-check (attempt {attempt + 1}/{max_retries}). Retrying in {retry_delay}s...")
-                    if attempt < max_retries - 1:
-                        import time
-                        time.sleep(retry_delay)
-                        retry_delay *= 2
-                        continue
-                else:
-                    print(f"❌ Gemini API error during batch fact-check: {response.status_code} - {response.text}")
-                    return []
-            except requests.exceptions.RequestException as e:
-                print(f"❌ Request error during batch fact-check (attempt {attempt + 1}/{max_retries}): {e}")
-                if attempt < max_retries - 1:
-                    import time
-                    time.sleep(retry_delay)
-                    retry_delay *= 2
-                    continue
-                return []
-
-        if response.status_code == 200:
-            response_data = response.json()
-            candidates = response_data.get("candidates", [])
-            if candidates:
-                content = candidates[0].get("content", {})
-                parts = content.get("parts", [])
-                if parts:
-                    extracted_text = parts[0].get("text", "").strip()
-                    try:
-                        if extracted_text.startswith("```json"):
-                            extracted_text = extracted_text.replace("```json", "").replace("```", "").strip()
-                        parsed_list = json.loads(extracted_text)
-                        if not isinstance(parsed_list, list):
-                            print("⚠️ Model did not return a JSON array; attempting to coerce.")
-                            parsed_list = [parsed_list]
-                        # Align results with inputs and enrich with sources
-                        verdicts = []
-                        for i, item in enumerate(parsed_list[:len(contexts)]):
-                            v = {
-                                'claim': item.get('claim') or contexts[i]['ar'],
-                                'verdict': item.get('verdict', 'INSUFFICIENT_INFO'),
-                                'confidence': item.get('confidence', 0.5),
-                                'reasoning': item.get('reasoning', ''),
-                                'medical_category': item.get('medical_category', 'treatment'),
-                            }
-                            # Enrich with sources from previously fetched relevant docs
-                            v['sources'] = _assemble_sources(contexts[i]['relevant_docs'])
-                            verdicts.append(v)
-                        print(f"✅ Batch fact-checked {len(verdicts)} claims successfully")
-                        return verdicts
-                    except json.JSONDecodeError:
-                        print(f"❌ Failed to parse batch fact-check JSON response: {extracted_text}")
-                        return []
-        return []
-    except Exception as e:
-        print(f"❌ Error in batch fact-checking: {e}")
+# =================== Batch fact-checking ====================
+def batch_fact_check_claims_with_sources(
+    claims_ar_en: List[dict], contexts: List[dict]
+) -> List[dict]:
+    """
+    claims_ar_en: [{"ar": str, "en": str}, ...]
+    contexts: [{
+      "rag_sources": [src...],
+      "web_trusted_sources": [src...],
+      "web_untrusted_sources": [src...],
+      "context_texts": [str...]
+    }, ...]
+    Returns: verdicts[] aligned with input order; we will attach sources afterwards.
+    """
+    if not claims_ar_en:
         return []
 
+    prompt_header = (
+        "You are an expert medical fact-checker for diabetes claims. For each claim, "
+        "consider ONLY the provided context snippets (RAG + trusted web). "
+        "Return a JSON array (same order as input). Use Arabic for 'claim' and 'reasoning'.\n\n"
+        "Schema for each item:\n"
+        "{\n"
+        '  "claim": "Arabic claim text",\n'
+        '  "verdict": "TRUE|FALSE|PARTIALLY_TRUE|INSUFFICIENT_INFO",\n'
+        '  "confidence": 0.0,\n'
+        '  "reasoning": "Brief Arabic explanation",\n'
+        '  "medical_category": "treatment|prevention|symptoms|causes|diet|lifestyle"\n'
+        "}\n"
+    )
 
-def fact_check_claims(claims):
-    """Fact-check a list of diabetes claims using Gemini by processing each claim individually"""
+    claims_block = []
+    for i, (c, ctx) in enumerate(zip(claims_ar_en, contexts), start=1):
+        snippets = ctx.get("context_texts", [])
+        # join short snippets separated by newlines
+        ctx_text = "\n\n".join([f"- {s}" for s in snippets]) if snippets else ""
+        claims_block.append(
+            {
+                "id": i,
+                "claim_ar": c.get("ar", ""),
+                "claim_en": c.get("en", ""),
+                "context_snippets": ctx_text,
+            }
+        )
+
+    # Prompt text with JSON-encoded blocks to reduce formatting mistakes
+    prompt = (
+        prompt_header
+        + "\nCLAIMS:\n"
+        + json.dumps(claims_block, ensure_ascii=False, indent=2)
+    )
+
+    resp = _gemini_post(prompt, timeout=90)
+    if not resp:
+        return []
+
+    txt = _extract_text_from_gemini_response(resp)
+    if txt.startswith("```json"):
+        txt = txt.replace("```json", "").replace("```", "").strip()
+
     try:
-        if not claims:
-            return []
-
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            print("⚠️ Warning: GEMINI_API_KEY not found, skipping fact-checking")
-            return []
-
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-        
-        all_verdicts = []
-        
-        # Process each claim individually
-        for i, claim in enumerate(claims):
-            print(f"🔍 Fact-checking claim {i+1}/{len(claims)}: {claim[:50]}...")
-            
-            verdict = fact_check_single_claim(claim, api_key, url)
-            if verdict:
-                all_verdicts.append(verdict)
-        
-        print(f"✅ Fact-checked {len(all_verdicts)} claims successfully")
-        return all_verdicts
-
-    except Exception as e:
-        print(f"❌ Error fact-checking claims: {str(e)}")
+        parsed = json.loads(txt)
+        if isinstance(parsed, dict):
+            parsed = [parsed]
+        if not isinstance(parsed, list):
+            print("⚠️ Model did not return a JSON array; coercing to list.")
+            parsed = [parsed]
+        out: List[dict] = []
+        for i, item in enumerate(parsed[: len(claims_ar_en)]):
+            out.append(
+                {
+                    "claim": item.get("claim") or claims_ar_en[i]["ar"],
+                    "verdict": item.get("verdict", "INSUFFICIENT_INFO"),
+                    "confidence": item.get("confidence", 0.5),
+                    "reasoning": item.get("reasoning", ""),
+                    "medical_category": item.get("medical_category", "treatment"),
+                }
+            )
+        return out
+    except json.JSONDecodeError:
+        print(f"❌ Failed to parse batch fact-check JSON:\n{txt[:400]}")
         return []
 
 
-def fact_check_single_claim(claim, api_key, url):
-    """Fact-check a single diabetes claim using Gemini with RAG context"""
-    try:
-        # Get relevant context from ChromaDB
-        print(f"🔍 Retrieving relevant context for claim...")
-        relevant_docs = get_relevant_context(claim)
-        
-        # Build context section for the prompt
-        context_section = ""
-        if relevant_docs:
-            context_section = "\n\nRELEVANT MEDICAL KNOWLEDGE:\n"
-            for i, doc in enumerate(relevant_docs):
-                context_section += f"Document {i+1} (relevance: {doc['relevance_score']:.2f}):\n{doc['content']}\n\n"
-            print(f"✅ Added {len(relevant_docs)} relevant documents as context")
-        else:
-            print("⚠️ No relevant context found, using general medical knowledge")
-        
-        prompt = f"""
-You are an expert medical fact-checker for diabetes claims. Your task is to fact-check the provided diabetes claim using both your medical knowledge and the relevant medical literature provided below.
-
-For the claim provided, you must evaluate its medical accuracy and provide:
-1. verdict: TRUE, FALSE, PARTIALLY_TRUE, or INSUFFICIENT_INFO
-2. confidence: A number between 0.0 and 1.0 indicating your confidence in the verdict
-3. reasoning: Brief medical explanation in Arabic for your verdict
-4. medical_category: One of: treatment, prevention, symptoms, causes, diet, lifestyle
-
-Verdict definitions:
-- TRUE: Medically accurate based on established diabetes knowledge
-- FALSE: Medically incorrect or contradicts established knowledge  
-- PARTIALLY_TRUE: Contains some truth but incomplete/misleading
-- INSUFFICIENT_INFO: Cannot determine accuracy with available medical knowledge
-
-IMPORTANT: Use the relevant medical knowledge provided below to inform your fact-checking. If the provided documents contain information that supports or contradicts the claim, reference this in your reasoning.{context_section}
-
-Your output MUST be this exact JSON format. Do not include any other text, explanations, or conversational language.
-
-{{
-  "claim": "The original claim text",
-  "verdict": "TRUE|FALSE|PARTIALLY_TRUE|INSUFFICIENT_INFO",
-  "confidence": 0.85,
-  "reasoning": "Brief medical explanation in Arabic",
-  "medical_category": "treatment|prevention|symptoms|causes|diet|lifestyle"
-}}
-
-Claim to fact-check:
-{claim}
-"""
-
-        payload = {"contents": [{"parts": [{"text": prompt}]}]}
-        headers = {"Content-Type": "application/json"}
-
-        # Add retry logic for API overload
-        max_retries = 3
-        retry_delay = 5  # seconds
-        
-        for attempt in range(max_retries):
-            try:
-                response = requests.post(url, json=payload, headers=headers, timeout=60)
-                
-                if response.status_code == 200:
-                    break
-                elif response.status_code == 503:
-                    print(f"⚠️ Gemini API overloaded during fact-check (attempt {attempt + 1}/{max_retries}). Retrying in {retry_delay} seconds...")
-                    if attempt < max_retries - 1:
-                        import time
-                        time.sleep(retry_delay)
-                        retry_delay *= 2
-                        continue
-                else:
-                    print(f"❌ Gemini API error during fact-checking: {response.status_code} - {response.text}")
-                    return None
-            except requests.exceptions.RequestException as e:
-                print(f"❌ Request error during fact-check (attempt {attempt + 1}/{max_retries}): {e}")
-                if attempt < max_retries - 1:
-                    import time
-                    time.sleep(retry_delay)
-                    retry_delay *= 2
-                    continue
-                return None
-
-        if response.status_code == 200:
-            response_data = response.json()
-            candidates = response_data.get("candidates", [])
-            if candidates:
-                content = candidates[0].get("content", {})
-                parts = content.get("parts", [])
-                if parts:
-                    extracted_text = parts[0].get("text", "").strip()
-
-                    try:
-                        if extracted_text.startswith("```json"):
-                            extracted_text = (
-                                extracted_text.replace("```json", "")
-                                .replace("```", "")
-                                .strip()
-                            )
-
-                        verdict = json.loads(extracted_text)
-                        
-                        # ✅ Add source information to the verdict
-                        if relevant_docs:
-                            # Build sources array with user-friendly relevance labels only (no percentages)
-                            if relevant_docs:
-                                verdict['sources'] = []
-                                seen_urls = set()
-                                for doc in relevant_docs:
-                                    source_url = (doc.get('metadata') or {}).get('source_url')
-                                    if source_url in seen_urls:
-                                        continue
-                                    seen_urls.add(source_url)
-                                    current_position = len(verdict['sources'])
-                                    relevance_display = (
-                                        'Most Relevant' if current_position == 0 else 'Moderately Relevant' if current_position == 1 else 'Supporting Evidence'
-                                    )
-                                    relevance_badge = (
-                                        'primary' if current_position == 0 else 'secondary' if current_position == 1 else 'tertiary'
-                                    )
-                                    # Assemble source info (exclude any numeric relevance fields)
-                                    source_name, source_homepage = get_source_name_from_url(source_url)
-                                    source_info = {
-                                        'content_preview': doc['content'][:200] + '...' if len(doc['content']) > 200 else doc['content'],
-                                        'relevance_display': relevance_display,
-                                        'relevance_badge': relevance_badge,
-                                        'source_type': 'medical_literature',
-                                        'source_name': source_name,
-                                        'source_url': source_url,
-                                        'source_homepage': source_homepage,
-                                    }
-                                    verdict['sources'].append(source_info)
-                        
-                        print(f"✅ Fact-checked claim with RAG: {verdict.get('verdict', 'UNKNOWN')} using {len(verdict.get('sources', []))} unique sources")
-                        return verdict
-
-                    except json.JSONDecodeError:
-                        print(f"❌ Failed to parse fact-check JSON response: {extracted_text}")
-                        return None
-
-            return None
-        else:
-            print(f"❌ Gemini API error during fact-checking: {response.status_code} - {response.text}")
-            return None
-
-    except Exception as e:
-        print(f"❌ Error fact-checking single claim: {str(e)}")
-        return None
-
-
-# ✅ Main endpoint with database caching
+# ===================== Main endpoint ========================
 @router.post("/process-video", response_model=VideoProcessResponse)
 async def process_video(request: VideoProcessRequest, db: Session = Depends(get_db)):
-    """Process video with database caching and fact-checking"""
+    """
+    Full pipeline:
+      - cache check
+      - download + transcribe
+      - extract up to 3 claims (AR+EN)
+      - for each claim: RAG search + web search (trusted/untrusted), normalize sources, build LLM context
+      - batch fact-check with per-claim context
+      - attach sources (rag + web trusted + web untrusted) to each verdict
+      - persist & return
+    """
     try:
         print(f"🚀 Processing video: {request.url}")
 
-        # ✅ Step 1: Check if URL exists in database
-        existing_video = db.query(Video).filter(Video.url == request.url).first()
-
-        if existing_video:
-            print(f"⚡ Found cached result for: {request.url}")
+        # 1) Cache check
+        existing = db.query(Video).filter(Video.url == request.url).first()
+        if existing:
+            print("⚡ Cache hit — returning stored result.")
             return VideoProcessResponse(
                 success=True,
                 message="Retrieved from cache",
-                videoID=existing_video.videoID,
-                url=existing_video.url,
-                title=existing_video.title,
-                transcription=existing_video.transcription,
-                claims=existing_video.claims,
-                verdicts=existing_video.verdicts if hasattr(existing_video, 'verdicts') else [],
-                processed_at=existing_video.processed_at,
+                videoID=existing.videoID,
+                url=existing.url,
+                title=existing.title,
+                transcription=existing.transcription,
+                claims=existing.claims or [],
+                verdicts=existing.verdicts or [],
+                processed_at=existing.processed_at,
                 from_cache=True,
             )
 
-        # ✅ Step 2: Process new video
-        print(f"🔄 Processing new video: {request.url}")
-
-        # Download video
-        downloader = VideoDownloaderService()
-        download_result = downloader.download_videos([request.url])
-        print(f"📥 Download result: {download_result}")
-
-        if not download_result["success"] or not download_result["downloaded_files"]:
+        # 2) Download
+        dl = VideoDownloaderService()
+        dl_res = dl.download_videos([request.url])
+        if not dl_res.get("success") or not dl_res.get("downloaded_files"):
             raise HTTPException(status_code=400, detail="Failed to download video")
-
-        downloaded_file = download_result["downloaded_files"][0]
-        print(f"📁 File to transcribe: {downloaded_file}")
-
-        # Get video title from filename (remove .mp3 extension)
+        audio_file = dl_res["downloaded_files"][0]
         video_title = (
-            downloaded_file.replace(".mp3", "")
-            if downloaded_file.endswith(".mp3")
-            else downloaded_file
+            audio_file.replace(".mp3", "")
+            if audio_file.endswith(".mp3")
+            else audio_file
         )
 
-        # Transcribe video
-        print(f"🎤 Starting transcription...")
+        # 3) Transcribe
         transcriber = TranscriptionService()
-        transcription_result = transcriber.transcribe_audio_files([downloaded_file])
-        print(f"🎤 Transcription result: {transcription_result}")
-
-        if not transcription_result["transcriptions"]:
+        tr_res = transcriber.transcribe_audio_files([audio_file])
+        if not tr_res.get("transcriptions"):
             raise HTTPException(status_code=500, detail="Failed to transcribe video")
+        transcription = tr_res["transcriptions"][0]
+        if not transcription.get("success"):
+            raise HTTPException(status_code=500, detail="Transcription failed")
 
-        transcription = transcription_result["transcriptions"][0]
-        print(f"🎤 Transcribed: {transcription['filename']}")
+        # 4) Extract claims (AR+EN), cap to MAX_CLAIMS
+        claims_ar_en: List[dict] = extract_claims_with_translation(
+            transcription["transcription"], max_claims=MAX_CLAIMS
+        )
+        claims_ar = [c["ar"] for c in claims_ar_en][:MAX_CLAIMS]
+        print(f"🧩 Extracted {len(claims_ar)} claims")
 
-        # Extract claims (AR+EN) and batch fact-check them
-        claims: List[str] = []
         verdicts: List[dict] = []
-        if transcription["success"]:
-            print(f"🔍 Extracting up to 3 claims (AR+EN) from: {transcription['filename']}")
-            claims_ar_en = extract_claims_with_translation(transcription["transcription"], max_claims=3)
-            claims = [c.get('ar') for c in claims_ar_en if c.get('ar')][:3]
-            if claims:
-                print(f"🔍 Batch fact-checking {len(claims)} claims")
-                verdicts = batch_fact_check_claims(claims_ar_en)
-                print(f"✅ Successfully fact-checked {len(verdicts)} out of {len(claims)} claims")
+        contexts_for_llm: List[dict] = []
+        unified_sources_per_claim: List[List[dict]] = []
 
-        print(f"✅ Extracted {len(claims)} claims with {len(verdicts)} fact-checks")
+        # 5) For each claim: get RAG + Web evidence
+        for idx, item in enumerate(claims_ar_en):
+            ar = item["ar"]
+            en = item["en"]
 
-        # ✅ Step 3: Save to database
+            # RAG lane
+            rag_docs = (
+                get_relevant_context(
+                    ar, max_results=MAX_RAG_SOURCES, english_query_override=en
+                )
+                if RAG_AVAILABLE
+                else []
+            )
+            rag_sources = assemble_rag_sources(rag_docs, cap=MAX_RAG_SOURCES)
+
+            # Web lane (Arabic query)
+            web_raw = web_search_for_claim(ar, lang="ar", num=5)
+            web_trusted, web_untrusted = assemble_web_sources(
+                web_raw.get("trusted", []), web_raw.get("untrusted", [])
+            )
+
+            # Build snippets to feed the LLM (RAG + trusted web only)
+            ctx_snippets = build_context_snippets_for_llm(rag_sources, web_trusted)
+
+            # unify sources for storage/UI: RAG + trusted + untrusted
+            unified_sources = []
+            # Keep order: RAG → web trusted → web untrusted
+            # Dedupe across both lists by URL
+            seen = set()
+            for bucket in (rag_sources, web_trusted, web_untrusted):
+                for s in bucket:
+                    u = s.get("source_url")
+                    if u and u not in seen:
+                        seen.add(u)
+                        unified_sources.append(s)
+
+            contexts_for_llm.append(
+                {
+                    "rag_sources": rag_sources,
+                    "web_trusted_sources": web_trusted,
+                    "web_untrusted_sources": web_untrusted,
+                    "context_texts": ctx_snippets,
+                }
+            )
+            unified_sources_per_claim.append(unified_sources)
+
+        # 6) Batch fact-check with per-claim context blocks
+        model_verdicts = batch_fact_check_claims_with_sources(
+            claims_ar_en, contexts_for_llm
+        )
+
+        # 7) Attach sources to each verdict (aligned by index)
+        for i, mv in enumerate(model_verdicts):
+            mv["sources"] = (
+                unified_sources_per_claim[i]
+                if i < len(unified_sources_per_claim)
+                else []
+            )
+            verdicts.append(mv)
+
+        # 8) Persist
         new_video = Video(
             url=request.url,
             title=video_title,
-            transcription=(
-                transcription["transcription"] if transcription["success"] else None
-            ),
-            claims=claims,
-            verdicts=verdicts,  # ✅ Save verdicts to database
+            transcription=transcription.get("transcription"),
+            claims=claims_ar,
+            verdicts=verdicts,
         )
-
         db.add(new_video)
         db.commit()
         db.refresh(new_video)
 
-        print(f"💾 Saved to database with ID: {new_video.videoID}")
+        # Optional: clean processed audio
+        try:
+            fp = os.path.join("downloads", audio_file)
+            if os.path.exists(fp):
+                os.remove(fp)
+        except Exception as ce:
+            print(f"⚠️ Could not delete {audio_file}: {ce}")
 
         return VideoProcessResponse(
             success=True,
@@ -818,35 +727,34 @@ async def process_video(request: VideoProcessRequest, db: Session = Depends(get_
             title=new_video.title,
             transcription=new_video.transcription,
             claims=new_video.claims,
-            verdicts=new_video.verdicts,  # ✅ Return verdicts
+            verdicts=new_video.verdicts,
             processed_at=new_video.processed_at,
             from_cache=False,
         )
-
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"❌ FULL ERROR: {str(e)}")
+        print(f"❌ FULL ERROR: {e}")
         import traceback
 
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ✅ Cleanup endpoint
+# =================== Utilities endpoints ====================
 @router.delete("/clean-downloads")
 async def clean_downloads():
-    """Clean up all downloaded files"""
+    """Delete files in downloads/ via TranscriptionService utility."""
     try:
         transcriber = TranscriptionService()
-        result = transcriber.cleanup_audio_files()
-        return result
+        return transcriber.cleanup_audio_files()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ✅ Enhanced endpoint: Get cached videos with verdicts
 @router.get("/cached-videos")
 async def get_cached_videos(db: Session = Depends(get_db)):
-    """Get list of all cached videos with fact-check results"""
+    """List cached videos with counts."""
     try:
         videos = db.query(Video).order_by(Video.processed_at.desc()).all()
         return {
@@ -857,8 +765,8 @@ async def get_cached_videos(db: Session = Depends(get_db)):
                     "videoID": v.videoID,
                     "url": v.url,
                     "title": v.title,
-                    "claims_count": len(v.claims),
-                    "verdicts_count": len(v.verdicts) if hasattr(v, 'verdicts') else 0,
+                    "claims_count": len(v.claims or []),
+                    "verdicts_count": len(v.verdicts or []),
                     "processed_at": v.processed_at,
                 }
                 for v in videos

@@ -736,3 +736,147 @@
     padding: 15px;
   }
 }
+
+
+/* Add after your existing CSS */
+
+/* Sources Section Enhancements */
+.sources-heading {
+  margin-top: 20px;
+  margin-bottom: 15px;
+  font-size: 18px;
+  color: #333;
+  border-top: 1px solid #eee;
+  padding-top: 15px;
+}
+
+.source-item {
+  background: #f9f9f9;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 15px;
+  border-left: 4px solid #b3d9ff;
+}
+
+.source-item.trusted-source {
+  border-left-color: #28a745;
+  background-color: #f8fff8;
+}
+
+.source-item.untrusted-source {
+  border-left-color: #6c757d;
+  background-color: #f9f9f9;
+}
+
+.source-name-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.source-icon {
+  font-size: 16px;
+}
+
+.source-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.source-link {
+  color: #0066cc;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.source-link:hover {
+  text-decoration: underline;
+}
+
+.source-preview {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #555;
+  background: white;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid #eee;
+}
+
+.trust-badge {
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  margin-left: 8px;
+}
+
+.trust-badge.trusted {
+  background: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.trust-badge.untrusted {
+  background: #f8f9fa;
+  color: #6c757d;
+  border: 1px solid #e9ecef;
+}
+
+/* Enhanced Relevance Badges */
+.relevance-badge {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.relevance-badge.primary {
+  background: #cce5ff;
+  color: #0047b3;
+  border: 1px solid #b3d9ff;
+}
+
+.relevance-badge.secondary {
+  background: #e2f0d9;
+  color: #508c37;
+  border: 1px solid #c5e0b4;
+}
+
+.relevance-badge.tertiary {
+  background: #f8f9fa;
+  color: #5a6268;
+  border: 1px solid #dae0e5;
+}
+
+.relevance-badge.neutral {
+  background: #f8f9fa;
+  color: #777;
+  border: 1px solid #ddd;
+}
+
+/* Mobile Responsive Enhancements */
+@media (max-width: 768px) {
+  .source-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+  }
+  
+  .source-name-container {
+    margin-bottom: 5px;
+  }
+  
+  .relevance-badge {
+    align-self: flex-start;
+  }
+  
+  .source-preview {
+    font-size: 13px;
+    padding: 8px;
+  }
+}

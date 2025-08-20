@@ -60,3 +60,6 @@ web-app/downloads/
 __pycache__/
 *.pyc
 .chromadb/
+
+*.pyc
+__pycache__/
