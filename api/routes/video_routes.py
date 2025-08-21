@@ -86,7 +86,7 @@ MAX_CLAIMS = 3
 MAX_RAG_SOURCES = 3
 MAX_WEB_TRUSTED_SOURCES = 3
 MAX_WEB_UNTRUSTED_SOURCES = 2  # stored for transparency; not fed to LLM
-SNIPPET_MAX_CHARS = 220
+SNIPPET_MAX_CHARS = 220  # used ONLY for RAG (not web)
 
 GEMINI_MODEL_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 SERPER_SEARCH_URL = "https://google.serper.dev/search"
@@ -133,10 +133,27 @@ def is_trusted_url(url: str) -> bool:
 
 
 def safe_preview(text: str, limit: int = SNIPPET_MAX_CHARS) -> str:
+    """Trim long text (used for RAG only)."""
     if not text:
         return ""
     text = re.sub(r"\s+", " ", text).strip()
     return (text[:limit] + "...") if len(text) > limit else text
+
+
+def clean_snippet(text: str) -> str:
+    """Remove search-engine artifact prefixes like 'المفقودة:' / 'Missing:' and tidy whitespace (WEB ONLY)."""
+    if not text:
+        return ""
+    # Drop lines starting with these markers
+    text = re.sub(
+        r"^\s*(المفقودة|Missing)\s*:\s*.*$",
+        "",
+        text,
+        flags=re.IGNORECASE | re.MULTILINE,
+    )
+    # Collapse whitespace
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
 
 
 # =================== LLM-related helpers ====================
@@ -359,7 +376,7 @@ def get_relevant_context(
 def assemble_rag_sources(
     relevant_docs: List[dict], cap: int = MAX_RAG_SOURCES
 ) -> List[dict]:
-    """Turn RAG docs into uniform source objects with relevance_display bins."""
+    """Turn RAG docs into uniform source objects with relevance_display bins (uses safe_preview)."""
     out, seen = [], set()
     for idx, d in enumerate(relevant_docs):
         meta = d.get("metadata") or {}
@@ -383,7 +400,7 @@ def assemble_rag_sources(
                 "source_name": source_name,
                 "source_url": url,
                 "source_homepage": source_homepage,
-                "content_preview": safe_preview(content),
+                "content_preview": safe_preview(content),  # RAG ONLY trims
                 "relevance_display": relevance_display,
             }
         )
@@ -418,7 +435,8 @@ def web_search_for_claim(
                 continue
             item = {
                 "title": res.get("title") or "",
-                "snippet": res.get("snippet") or "",
+                # WEB: keep raw snippet but clean artifacts; DO NOT truncate
+                "snippet": clean_snippet(res.get("snippet") or ""),
                 "url": url,
                 "domain": get_domain(url),
             }
@@ -432,21 +450,23 @@ def web_search_for_claim(
 def assemble_web_sources(
     trusted: List[dict], untrusted: List[dict]
 ) -> Tuple[List[dict], List[dict]]:
-    """Convert web results into uniform source objects with relevance_badge."""
+    """
+    Convert web results into uniform source objects with relevance_badge.
+    IMPORTANT: For WEB we DO NOT truncate. content_preview = cleaned snippet (or title if snippet empty).
+    """
 
     def to_source(res: dict, trusted_flag: bool, pos: int) -> dict:
         source_name, source_homepage = get_source_name_from_url(res.get("url", ""))
-        badge = "primary" if trusted_flag else ("tertiary")
-        # if you want a middle badge for reputable but not in allowlist, add logic here
+        badge = "primary" if trusted_flag else "tertiary"
+        cleaned = clean_snippet(res.get("snippet", "") or "")
+        content_preview = cleaned if cleaned else (res.get("title") or "")
         return {
             "source_type": "web",
             "trusted": trusted_flag,
             "source_name": source_name,
             "source_url": res.get("url", ""),
             "source_homepage": source_homepage,
-            "content_preview": safe_preview(
-                res.get("snippet", "") or res.get("title", "")
-            ),
+            "content_preview": content_preview,  # WEB: cleaned, untruncated
             "relevance_badge": badge,
         }
 
@@ -474,19 +494,25 @@ def assemble_web_sources(
 def build_context_snippets_for_llm(
     rag_sources: List[dict], web_trusted_sources: List[dict]
 ) -> List[str]:
-    """Returns short snippets to feed the LLM; prefer RAG, then web trusted."""
+    """
+    Returns short snippets to feed the LLM.
+    - RAG: use content_preview (already safe_preview-trimmed).
+    - WEB (trusted only): use cleaned snippet AS-IS (no truncation).
+    """
     snippets: List[str] = []
-    # RAG snippets: use content_preview (already from chunks)
+    # RAG snippets
     for s in rag_sources:
         preview = s.get("content_preview") or ""
         if preview:
             snippets.append(preview)
-    # Web trusted: use title + snippet
+    # WEB trusted snippets
     for s in web_trusted_sources:
-        combined = (s.get("content_preview") or "").strip()
-        if combined:
-            snippets.append(combined)
-    # keep it small
+        snippet = (
+            s.get("content_preview") or ""
+        ).strip()  # already cleaned; not truncated
+        if snippet:
+            snippets.append(snippet)
+    # keep it small by source caps only (no per-snippet truncation for web)
     return snippets[: (MAX_RAG_SOURCES + MAX_WEB_TRUSTED_SOURCES)]
 
 
