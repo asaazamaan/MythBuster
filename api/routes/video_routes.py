@@ -68,7 +68,7 @@ TRUSTED_DOMAINS = [
     "cdc.gov",
     "mayoclinic.org",
     "nih.gov",
-    ".ncbi.nlm.nih.gov",
+    "ncbi.nlm.nih.gov",
     "clevelandclinic.org",
     "webmd.com",
     "diabetes.org",
@@ -225,39 +225,91 @@ def translate_to_english(arabic_text: str) -> str:
     except Exception:
         return arabic_text
 
-
 # =================== Claim extraction =======================
+
+def _strip_code_fences(text: str) -> str:
+    """Remove ```json ... ``` or plain ``` fences if present."""
+    if not text:
+        return ""
+    t = text.strip()
+    if t.startswith("```json"):
+        t = t[7:]
+    elif t.startswith("```"):
+        t = t[3:]
+    t = t.strip()
+    if t.endswith("```"):
+        t = t[:-3]
+    return t.strip()
+
+
 def extract_claims_from_transcript(transcript_text: str) -> List[str]:
     """Fallback extractor (Arabic only)."""
     try:
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             return []
+
         prompt = f"""
-You are an expert medical claim extractor for an "AI MythBuster" project. Extract concise, verifiable claims about Diabetes from this transcript.
-If not about Diabetes, return exactly: {{"domain_is_diabetes": false, "claims": []}}.
+You are an expert medical claim extractor for an "AI MythBuster" project. Your task is to analyze the provided video transcript to identify and extract factual claims ONLY.
 
-Return ONLY JSON:
-{{"domain_is_diabetes": true, "claims": ["Arabic claim 1","Arabic claim 2","Arabic claim 3"]}}
+You must follow these rules strictly:
 
-Transcript:
+1. The transcript may contain spelling errors, grammar mistakes, and conversational fillers. Ignore these errors and focus on understanding the intended meaning of the text.
+
+2. Read the transcript carefully to determine if the primary topic and claims are related to the medical field of "Diabetes" or diabetic care.
+
+3. If the transcript's claims are NOT about Diabetes, your output MUST be this exact JSON object:
+{{"domain_is_diabetes": false, "claims": []}}
+
+4. If the transcript's claims ARE about Diabetes, identify the main claims.
+
+    - Prioritize extracting any claims that are likely to be medically misleading, exaggerated, or incorrect. If no such claims are found, then extract up to three significant factual claims. All claims must be written in correct Arabic, clearly and objectively, while preserving the speaker's original intended meaning without softening or interpreting it.
+
+    - Focus on the single most significant claim if possible.
+
+    - If a single main claim cannot be identified, extract up to a maximum of three distinct, verifiable claims.
+
+    - Each claim should be a concise, objective statement written in Arabic language.
+
+5. Your output MUST be this exact JSON format, with the boolean value and claims array filled in based on the rules above. All claims must be written in Arabic. Do not include any other text, explanations, or conversational language. Return ONLY JSON. Do not wrap the JSON in code fences.
+
+{{
+  "domain_is_diabetes": true,
+  "claims": [
+    "Arabic claim text 1",
+    "Arabic claim text 2",
+    "Arabic claim text 3"
+  ]
+}}
+
+Transcript to analyze:
 "{transcript_text}"
         """.strip()
+
         resp = _gemini_post(prompt, timeout=60)
         if not resp:
             return []
-        txt = _extract_text_from_gemini_response(resp)
-        if txt.startswith("```json"):
-            txt = txt.replace("```json", "").replace("```", "").strip()
-        parsed = json.loads(txt)
+
+        txt = _extract_text_from_gemini_response(resp) or ""
+        txt = _strip_code_fences(txt)
+
+        try:
+            parsed = json.loads(txt)
+        except json.JSONDecodeError:
+            # Line-split fallback (keep non-empty lines)
+            claims = [line.strip() for line in txt.split("\n") if line.strip()]
+            return claims[:MAX_CLAIMS]
+
         if not parsed.get("domain_is_diabetes", False):
             return []
+
         claims = [
             c.strip()
             for c in parsed.get("claims", [])
             if isinstance(c, str) and c.strip()
         ]
         return claims[:MAX_CLAIMS]
+
     except Exception as e:
         print(f"❌ extract_claims_from_transcript error: {e}")
         return []
@@ -274,62 +326,84 @@ def extract_claims_with_translation(
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             return []
+
         prompt = f"""
-You are an expert medical claim extractor for an "AI MythBuster" project.
-If NOT about Diabetes, return exactly: {{"domain_is_diabetes": false, "claims": []}}.
-If it IS about Diabetes, return up to {max_claims} claims with Arabic in "ar" and precise English in "en".
+You are an expert medical claim extractor for an "AI MythBuster" project. Your task is to analyze the provided video transcript to identify and extract factual claims ONLY.
 
-Return ONLY JSON:
-{{"domain_is_diabetes": true, "claims":[{{"ar":"...","en":"..."}}, {{...}}] }}
+You must follow these rules strictly:
+1. The transcript may contain spelling errors, grammar mistakes, and conversational fillers. Ignore these errors and focus on understanding the intended meaning of the text.
+2. Read the transcript carefully to determine if the primary topic and claims are related to the medical field of "Diabetes" or diabetic care.
+3. If the transcript's claims are NOT about Diabetes, your output MUST be this exact JSON object:
+   {{"domain_is_diabetes": false, "claims": []}}
 
-Transcript:
+4. If the transcript's claims ARE about Diabetes, identify the main claims.
+   - Prioritize extracting any claims that are likely to be medically misleading, exaggerated, or incorrect. If no such claims are found, then extract up to three significant factual claims. All claims must be written in correct Arabic, clearly and objectively, while preserving the speaker's original intended meaning without softening or interpreting it.
+   - Focus on the single most significant claim if possible.
+   - If a single main claim cannot be identified, extract up to a maximum of three distinct, verifiable claims.
+   - Each claim should be a concise, objective statement written in Arabic language in the `ar` field, and you must also provide a precise English translation for that claim in the `en` field. Do not put Arabic text in `en` or English text in `ar`.
+
+5. Your output MUST be this exact JSON format, with the boolean value and claims array filled in based on the rules above. Do not include any other text, explanations, or conversational language. Return ONLY JSON. Do not wrap the JSON in code fences.
+
+{{
+  "domain_is_diabetes": true,
+  "claims": [
+    {{"ar": "Arabic claim text 1", "en": "English translation 1"}},
+    {{"ar": "Arabic claim text 2", "en": "English translation 2"}},
+    {{"ar": "Arabic claim text 3", "en": "English translation 3"}}
+  ]
+}}
+
+Transcript to analyze:
 "{transcript_text}"
         """.strip()
+
         resp = _gemini_post(prompt, timeout=60)
         if not resp:
-            # fallback
+            # Fallback to Arabic-only, then translate
             ar_only = extract_claims_from_transcript(transcript_text)
             return [
                 {"ar": ar, "en": translate_to_english(ar)}
                 for ar in ar_only[:max_claims]
             ]
 
-        txt = _extract_text_from_gemini_response(resp)
-        if txt.startswith("```json"):
-            txt = txt.replace("```json", "").replace("```", "").strip()
+        txt = _extract_text_from_gemini_response(resp) or ""
+        txt = _strip_code_fences(txt)
+
         try:
             parsed = json.loads(txt)
-            if not parsed.get("domain_is_diabetes", False):
-                return []
-            out: List[Dict[str, str]] = []
-            for c in parsed.get("claims", []):
-                if isinstance(c, dict):
-                    ar = (c.get("ar") or "").strip()
-                    en = (c.get("en") or "").strip()
-                    if ar and en:
-                        out.append({"ar": ar, "en": en})
-            if out:
-                return out[:max_claims]
-            # fallback path if model returned plain strings
-            ar_only = [
-                c for c in parsed.get("claims", []) if isinstance(c, str) and c.strip()
-            ]
-            out2 = [
-                {"ar": ar, "en": translate_to_english(ar)}
-                for ar in ar_only[:max_claims]
-            ]
-            return out2
         except json.JSONDecodeError:
-            # fallback entirely
+            # Fallback entirely: Arabic-only → translate
             ar_only = extract_claims_from_transcript(transcript_text)
             return [
                 {"ar": ar, "en": translate_to_english(ar)}
                 for ar in ar_only[:max_claims]
             ]
+
+        if not parsed.get("domain_is_diabetes", False):
+            return []
+
+        out: List[Dict[str, str]] = []
+        raw = parsed.get("claims", [])
+
+        for c in raw:
+            if isinstance(c, dict):
+                ar = (c.get("ar") or "").strip()
+                en = (c.get("en") or "").strip()
+                if ar and en:
+                    out.append({"ar": ar, "en": en})
+            elif isinstance(c, str) and c.strip():
+                # Model returned plain Arabic strings; translate to EN
+                ar = c.strip()
+                en = translate_to_english(ar)
+                out.append({"ar": ar, "en": en})
+            if len(out) >= max_claims:
+                break
+
+        return out[:max_claims]
+
     except Exception as e:
         print(f"❌ extract_claims_with_translation error: {e}")
         return []
-
 
 # ===================== RAG retrieval ========================
 def get_relevant_context(
@@ -533,19 +607,29 @@ def batch_fact_check_claims_with_sources(
     if not claims_ar_en:
         return []
 
-    prompt_header = (
-        "You are an expert medical fact-checker for diabetes claims. For each claim, "
-        "consider ONLY the provided context snippets (RAG + trusted web). "
-        "Return a JSON array (same order as input). Use Arabic for 'claim' and 'reasoning'.\n\n"
-        "Schema for each item:\n"
-        "{\n"
-        '  "claim": "Arabic claim text",\n'
-        '  "verdict": "TRUE|FALSE|PARTIALLY_TRUE|INSUFFICIENT_INFO",\n'
-        '  "confidence": 0.0,\n'
-        '  "reasoning": "Brief Arabic explanation",\n'
-        '  "medical_category": "treatment|prevention|symptoms|causes|diet|lifestyle"\n'
-        "}\n"
-    )
+    prompt_header = """
+You are an expert medical fact-checker for diabetes claims. Evaluate each claim using the provided CONTEXT_SNIPPETS. These snippets may include medical literature (RAG) and trusted web evidence.
+
+IMPORTANT: Use the relevant medical knowledge provided below to inform your fact-checking. If the provided documents contain information that supports or contradicts the claim, reference this in your reasoning. If context is insufficient, use established medical knowledge.
+
+Verdict definitions:
+- TRUE: Medically accurate according to the evidence
+- FALSE: Medically incorrect or contradicted by the evidence
+- PARTIALLY_TRUE: Contains some truth but is incomplete or misleading based on the evidence
+- INSUFFICIENT_INFO: Cannot determine accuracy from the provided evidence
+
+Return ONLY a JSON array of objects in the same order as input, with this exact schema:
+{
+  "claim": "Arabic claim text",
+  "verdict": "TRUE|FALSE|PARTIALLY_TRUE|INSUFFICIENT_INFO",
+  "reasoning": "Brief medical explanation in Arabic",
+  "medical_category": "treatment|prevention|symptoms|causes|diet|lifestyle"
+}
+Do not include any other text. Do not wrap the JSON in code fences.
+
+You will now receive a JSON array named CLAIMS.
+For each item, use the Arabic claim text (claim_ar) as the "claim" value, and the provided "context_snippets" to inform your judgement.
+"""
 
     claims_block = []
     for i, (c, ctx) in enumerate(zip(claims_ar_en, contexts), start=1):
@@ -572,9 +656,8 @@ def batch_fact_check_claims_with_sources(
     if not resp:
         return []
 
-    txt = _extract_text_from_gemini_response(resp)
-    if txt.startswith("```json"):
-        txt = txt.replace("```json", "").replace("```", "").strip()
+    txt = _extract_text_from_gemini_response(resp) or ""
+    txt = _strip_code_fences(txt)  # strip ```json or ``` if present
 
     try:
         parsed = json.loads(txt)
@@ -589,7 +672,6 @@ def batch_fact_check_claims_with_sources(
                 {
                     "claim": item.get("claim") or claims_ar_en[i]["ar"],
                     "verdict": item.get("verdict", "INSUFFICIENT_INFO"),
-                    "confidence": item.get("confidence", 0.5),
                     "reasoning": item.get("reasoning", ""),
                     "medical_category": item.get("medical_category", "treatment"),
                 }
@@ -598,7 +680,6 @@ def batch_fact_check_claims_with_sources(
     except json.JSONDecodeError:
         print(f"❌ Failed to parse batch fact-check JSON:\n{txt[:400]}")
         return []
-
 
 # ===================== Main endpoint ========================
 @router.post("/process-video", response_model=VideoProcessResponse)
