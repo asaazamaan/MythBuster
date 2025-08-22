@@ -1,5 +1,3 @@
-
-
 import React, { useState } from "react";
 import axios from "axios";
 import { ToastContainer, toast } from "react-toastify";
@@ -86,7 +84,9 @@ function App() {
       return <span className="source-type-badge trusted">Trusted web</span>;
     }
     return (
-      <span className="source-type-badge untrusted">General web (untrusted)</span>
+      <span className="source-type-badge untrusted">
+        General web (untrusted)
+      </span>
     );
   };
 
@@ -179,19 +179,7 @@ function App() {
             {/* Video Information */}
             <div className="card">
               <h3>📁 Video Information</h3>
-              <p>
-                <strong>Title:</strong> {result.title || "Unknown"}
-              </p>
-              <p>
-                <strong>Video ID:</strong> {result.videoID || "Unknown"}
-              </p>
-              <p>
-                <strong>Source:</strong>{" "}
-                {result.from_cache ? "⚡ Cached (instant result)" : "🔄 Freshly processed"}
-              </p>
-              <p>
-                <strong>Processed At:</strong> {formatDate(result.processed_at)}
-              </p>
+
               <p>
                 <strong>URL:</strong>{" "}
                 <a
@@ -225,19 +213,21 @@ function App() {
               {result.claims && result.claims.length > 0 ? (
                 <div className="claims-section">
                   <p className="claims-intro">
-                    Found {result.claims.length} diabetes-related claim(s) with medical fact-checks:
+                    Found {result.claims.length} diabetes-related claim(s) with
+                    medical fact-checks:
                   </p>
 
                   <div className="claims-list">
                     {result.verdicts && result.verdicts.length > 0
                       ? result.verdicts.map((verdict, index) => {
-                          const { rag, webTrusted, webUntrusted } = groupSources(
-                            verdict.sources
-                          );
+                          const { rag, webTrusted, webUntrusted } =
+                            groupSources(verdict.sources);
                           // Collapsed by default unless explicitly set to false
                           const ragCollapsed = collapsedRag[index] !== false;
-                          const trustedCollapsed = collapsedTrusted[index] !== false;
-                          const untrustedCollapsed = collapsedUntrusted[index] !== false;
+                          const trustedCollapsed =
+                            collapsedTrusted[index] !== false;
+                          const untrustedCollapsed =
+                            collapsedUntrusted[index] !== false;
 
                           return (
                             <div
@@ -251,8 +241,10 @@ function App() {
                                 >
                                   {verdict.verdict === "TRUE" && "✅ TRUE"}
                                   {verdict.verdict === "FALSE" && "❌ FALSE"}
-                                  {verdict.verdict === "PARTIALLY_TRUE" && "⚠️ PARTIAL"}
-                                  {verdict.verdict === "INSUFFICIENT_INFO" && "❓ UNCLEAR"}
+                                  {verdict.verdict === "PARTIALLY_TRUE" &&
+                                    "⚠️ PARTIAL"}
+                                  {verdict.verdict === "INSUFFICIENT_INFO" &&
+                                    "❓ UNCLEAR"}
                                 </div>
                               </div>
 
@@ -260,16 +252,22 @@ function App() {
                                 {verdict.claim}
                               </div>
                               <div className="medical-reasoning" dir="rtl">
-                                <strong>Medical Explanation:</strong> {verdict.reasoning}
+                                <strong>Medical Explanation:</strong>{" "}
+                                {verdict.reasoning}
                               </div>
                               <div className="medical-category">
-                                <strong>Category:</strong> {verdict.medical_category}
+                                <strong>Category:</strong>{" "}
+                                {verdict.medical_category}
                               </div>
 
                               {/* Sources */}
-                              {(rag.length > 0 || webTrusted.length > 0 || webUntrusted.length > 0) ? (
+                              {rag.length > 0 ||
+                              webTrusted.length > 0 ||
+                              webUntrusted.length > 0 ? (
                                 <div className="sources-section">
-                                  <h4 className="sources-heading">📚 Evidence & Sources</h4>
+                                  <h4 className="sources-heading">
+                                    Evidence & Sources
+                                  </h4>
 
                                   {/* RAG group (collapsible) */}
                                   {rag.length > 0 && (
@@ -282,7 +280,8 @@ function App() {
                                         onClick={() => toggleRag(index)}
                                       >
                                         <span>
-                                          📚 <strong>RAG evidence</strong> ({rag.length})
+                                          📚 <strong>RAG evidence</strong> (
+                                          {rag.length})
                                         </span>
                                         <span
                                           className="chevron"
@@ -290,7 +289,9 @@ function App() {
                                             marginLeft: 8,
                                             display: "inline-block",
                                             transition: "transform 0.18s ease",
-                                            transform: ragCollapsed ? "rotate(0deg)" : "rotate(180deg)",
+                                            transform: ragCollapsed
+                                              ? "rotate(0deg)"
+                                              : "rotate(180deg)",
                                           }}
                                         >
                                           ▾
@@ -299,14 +300,23 @@ function App() {
 
                                       <div
                                         id={`rag-panel-${index}`}
-                                        style={{ display: ragCollapsed ? "none" : "block" }}
+                                        style={{
+                                          display: ragCollapsed
+                                            ? "none"
+                                            : "block",
+                                        }}
                                       >
                                         <div className="sources-list">
                                           {rag.map((source, sourceIndex) => (
-                                            <div key={`rag-${index}-${sourceIndex}`} className="source-item trusted-source">
+                                            <div
+                                              key={`rag-${index}-${sourceIndex}`}
+                                              className="source-item trusted-source"
+                                            >
                                               <div className="source-header">
                                                 <div className="source-name-container">
-                                                  <span className="source-icon">{getSourceIcon(source)}</span>
+                                                  <span className="source-icon">
+                                                    {getSourceIcon(source)}
+                                                  </span>
                                                   <span className="source-name">
                                                     {source.source_url ? (
                                                       <a
@@ -315,20 +325,24 @@ function App() {
                                                         rel="noopener noreferrer"
                                                         className="source-link"
                                                       >
-                                                        {source.source_name || "Source"}
+                                                        {source.source_name ||
+                                                          "Source"}
                                                       </a>
                                                     ) : (
-                                                      source.source_name || "Source"
+                                                      source.source_name ||
+                                                      "Source"
                                                     )}
                                                   </span>
-                                                  {renderTrustBadge(source)}
+                                                  {/* {renderTrustBadge(source)} */}
                                                 </div>
                                                 <span
                                                   className={`relevance-badge ${
-                                                    source.relevance_badge || "primary"
+                                                    source.relevance_badge ||
+                                                    "primary"
                                                   }`}
                                                 >
-                                                  {source.relevance_display || "Most Relevant"}
+                                                  {source.relevance_display ||
+                                                    "Most Relevant"}
                                                 </span>
                                               </div>
 
@@ -353,7 +367,8 @@ function App() {
                                         onClick={() => toggleTrusted(index)}
                                       >
                                         <span>
-                                          🔍 <strong>Trusted web</strong> ({webTrusted.length})
+                                          🔍 <strong>Web search sources</strong>{" "}
+                                          ({webTrusted.length})
                                         </span>
                                         <span
                                           className="chevron"
@@ -361,7 +376,9 @@ function App() {
                                             marginLeft: 8,
                                             display: "inline-block",
                                             transition: "transform 0.18s ease",
-                                            transform: trustedCollapsed ? "rotate(0deg)" : "rotate(180deg)",
+                                            transform: trustedCollapsed
+                                              ? "rotate(0deg)"
+                                              : "rotate(180deg)",
                                           }}
                                         >
                                           ▾
@@ -370,44 +387,61 @@ function App() {
 
                                       <div
                                         id={`trusted-panel-${index}`}
-                                        style={{ display: trustedCollapsed ? "none" : "block" }}
+                                        style={{
+                                          display: trustedCollapsed
+                                            ? "none"
+                                            : "block",
+                                        }}
                                       >
                                         <div className="sources-list">
-                                          {webTrusted.map((source, sourceIndex) => (
-                                            <div key={`tweb-${index}-${sourceIndex}`} className="source-item trusted-source">
-                                              <div className="source-header">
-                                                <div className="source-name-container">
-                                                  <span className="source-icon">{getSourceIcon(source)}</span>
-                                                  <span className="source-name">
-                                                    {source.source_url ? (
-                                                      <a
-                                                        href={source.source_url}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="source-link"
-                                                      >
-                                                        {source.source_name || "Source"}
-                                                      </a>
-                                                    ) : (
-                                                      source.source_name || "Source"
-                                                    )}
+                                          {webTrusted.map(
+                                            (source, sourceIndex) => (
+                                              <div
+                                                key={`tweb-${index}-${sourceIndex}`}
+                                                className="source-item trusted-source"
+                                              >
+                                                <div className="source-header">
+                                                  <div className="source-name-container">
+                                                    <span className="source-icon">
+                                                      {getSourceIcon(source)}
+                                                    </span>
+                                                    <span className="source-name">
+                                                      {source.source_url ? (
+                                                        <a
+                                                          href={
+                                                            source.source_url
+                                                          }
+                                                          target="_blank"
+                                                          rel="noopener noreferrer"
+                                                          className="source-link"
+                                                        >
+                                                          {source.source_name ||
+                                                            "Source"}
+                                                        </a>
+                                                      ) : (
+                                                        source.source_name ||
+                                                        "Source"
+                                                      )}
+                                                    </span>
+                                                    {/* {renderTrustBadge(source)} */}
+                                                  </div>
+                                                  <span
+                                                    className={`relevance-badge ${
+                                                      source.relevance_badge ||
+                                                      "secondary"
+                                                    }`}
+                                                  >
+                                                    {source.relevance_display ||
+                                                      "Moderately Relevant"}
                                                   </span>
-                                                  {renderTrustBadge(source)}
                                                 </div>
-                                                <span
-                                                  className={`relevance-badge ${
-                                                    source.relevance_badge || "secondary"
-                                                  }`}
-                                                >
-                                                  {source.relevance_display || "Moderately Relevant"}
-                                                </span>
-                                              </div>
 
-                                              <div className="source-preview">
-                                                {source.content_preview}
+                                                <div className="source-preview">
+                                                  {source.content_preview}
+                                                </div>
                                               </div>
-                                            </div>
-                                          ))}
+                                            )
+                                          )}
                                         </div>
                                       </div>
                                     </div>
@@ -424,7 +458,12 @@ function App() {
                                         onClick={() => toggleUntrusted(index)}
                                       >
                                         <span>
-                                          🌐 <strong>General web (untrusted)</strong> ({webUntrusted.length})
+                                          🌐{" "}
+                                          <strong>
+                                            Web search sources that are not used
+                                            in judgment (untrusted)
+                                          </strong>{" "}
+                                          ({webUntrusted.length})
                                         </span>
                                         <span
                                           className="chevron"
@@ -432,7 +471,9 @@ function App() {
                                             marginLeft: 8,
                                             display: "inline-block",
                                             transition: "transform 0.18s ease",
-                                            transform: untrustedCollapsed ? "rotate(0deg)" : "rotate(180deg)",
+                                            transform: untrustedCollapsed
+                                              ? "rotate(0deg)"
+                                              : "rotate(180deg)",
                                           }}
                                         >
                                           ▾
@@ -441,54 +482,72 @@ function App() {
 
                                       <div
                                         id={`untrusted-panel-${index}`}
-                                        style={{ display: untrustedCollapsed ? "none" : "block" }}
+                                        style={{
+                                          display: untrustedCollapsed
+                                            ? "none"
+                                            : "block",
+                                        }}
                                       >
-                                        <p className="untrusted-note">
+                                        {/* <p className="untrusted-note">
                                           Items below are not on our trusted medical list; we include them for transparency.
-                                        </p>
+                                        </p> */}
                                         <div className="sources-list">
-                                          {webUntrusted.map((source, sourceIndex) => (
-                                            <div key={`uweb-${index}-${sourceIndex}`} className="source-item untrusted-source">
-                                              <div className="source-header">
-                                                <div className="source-name-container">
-                                                  <span className="source-icon">{getSourceIcon(source)}</span>
-                                                  <span className="source-name">
-                                                    {source.source_url ? (
-                                                      <a
-                                                        href={source.source_url}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="source-link"
-                                                      >
-                                                        {source.source_name || "Source"}
-                                                      </a>
-                                                    ) : (
-                                                      source.source_name || "Source"
-                                                    )}
-                                                  </span>
-                                                  {renderTrustBadge(source)}
-                                                </div>
-                                                <span
+                                          {webUntrusted.map(
+                                            (source, sourceIndex) => (
+                                              <div
+                                                key={`uweb-${index}-${sourceIndex}`}
+                                                className="source-item untrusted-source"
+                                              >
+                                                <div className="source-header">
+                                                  <div className="source-name-container">
+                                                    <span className="source-icon">
+                                                      {getSourceIcon(source)}
+                                                    </span>
+                                                    <span className="source-name">
+                                                      {source.source_url ? (
+                                                        <a
+                                                          href={
+                                                            source.source_url
+                                                          }
+                                                          target="_blank"
+                                                          rel="noopener noreferrer"
+                                                          className="source-link"
+                                                        >
+                                                          {source.source_name ||
+                                                            "Source"}
+                                                        </a>
+                                                      ) : (
+                                                        source.source_name ||
+                                                        "Source"
+                                                      )}
+                                                    </span>
+                                                    {/* {renderTrustBadge(source)} */}
+                                                  </div>
+                                                  {/* <span
                                                   className={`relevance-badge ${
                                                     source.relevance_badge || "neutral"
                                                   }`}
                                                 >
                                                   {source.relevance_display || "Supporting Evidence"}
-                                                </span>
-                                              </div>
+                                                </span> */}
+                                                </div>
 
-                                              <div className="source-preview">
-                                                {source.content_preview}
+                                                <div className="source-preview">
+                                                  {source.content_preview}
+                                                </div>
                                               </div>
-                                            </div>
-                                          ))}
+                                            )
+                                          )}
                                         </div>
                                       </div>
                                     </div>
                                   )}
                                 </div>
                               ) : (
-                                <div className="no-sources">No supporting sources were attached for this claim.</div>
+                                <div className="no-sources">
+                                  No supporting sources were attached for this
+                                  claim.
+                                </div>
                               )}
                             </div>
                           );
@@ -497,9 +556,13 @@ function App() {
                         result.claims.map((claim, index) => (
                           <div key={index} className="claim-item">
                             <div className="claim-number">{index + 1}</div>
-                            <div className="claim-text" dir="rtl">{claim}</div>
+                            <div className="claim-text" dir="rtl">
+                              {claim}
+                            </div>
                             <div className="claim-actions">
-                              <span className="processing-note">Fact-check processing...</span>
+                              <span className="processing-note">
+                                Fact-check processing...
+                              </span>
                             </div>
                           </div>
                         ))}
@@ -509,13 +572,14 @@ function App() {
                 <div className="no-claims">
                   <p>ℹ️ This video does not contain diabetes-related claims.</p>
                   <small>
-                    The AI analyzed the content and determined it's not about diabetes.
+                    The AI analyzed the content and determined it's not about
+                    diabetes.
                   </small>
                 </div>
               )}
             </div>
 
-            {/* Processing Status */}
+            {/* Processing Status
             <div className="card">
               <h3>📊 Processing Status</h3>
               <div className="status-info">
@@ -534,7 +598,7 @@ function App() {
                   </p>
                 )}
               </div>
-            </div>
+            </div> */}
           </div>
         )}
       </div>
