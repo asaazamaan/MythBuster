@@ -10,16 +10,28 @@ function App() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
-  // Collapsed states per-claim index (collapsed by default: undefined => collapsed)
+  // حالات الطيّ لكل ادعاء (افتراضياً مطوي)
   const [collapsedRag, setCollapsedRag] = useState({});
   const [collapsedTrusted, setCollapsedTrusted] = useState({});
   const [collapsedUntrusted, setCollapsedUntrusted] = useState({});
+
+  // ترجمات التصنيفات الطبية
+  const CATEGORY_LABELS_AR = {
+    treatment: "العلاج",
+    prevention: "الوقاية",
+    symptoms: "الأعراض",
+    causes: "الأسباب",
+    diet: "النظام الغذائي",
+    lifestyle: "نمط الحياة",
+  };
+  const tCategory = (val) =>
+    CATEGORY_LABELS_AR[(val || "").toLowerCase()] || val || "غير مُصنّف";
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!url.trim()) {
-      toast.error("Please enter a YouTube URL");
+      toast.error("فضلاً أدخل رابط يوتيوب");
       return;
     }
 
@@ -41,13 +53,13 @@ function App() {
       );
 
       setResult(response.data);
-      toast.success("Video processed successfully!");
+      toast.success("تم تحليل الفيديو بنجاح!");
     } catch (err) {
       console.error("Error:", err);
       const errorMessage =
-        err.response?.data?.detail || err.message || "An error occurred";
+        err.response?.data?.detail || err.message || "حدث خطأ غير متوقع";
       setError(errorMessage);
-      toast.error(`Error: ${errorMessage}`);
+      toast.error(`خطأ: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -63,11 +75,15 @@ function App() {
   };
 
   const formatDate = (dateString) => {
-    if (!dateString) return "Unknown";
-    return new Date(dateString).toLocaleString();
+    if (!dateString) return "غير معروف";
+    try {
+      return new Date(dateString).toLocaleString("ar-SA");
+    } catch {
+      return new Date(dateString).toLocaleString();
+    }
   };
 
-  // Helpers for source display
+  // أيقونات المصادر
   const getSourceIcon = (source) => {
     if (!source) return "📄";
     if (source.source_type === "rag") return "📚";
@@ -75,21 +91,21 @@ function App() {
     return "📄";
   };
 
+  // شارات نوع المصدر
   const renderTrustBadge = (source) => {
     if (!source) return null;
     if (source.source_type === "rag") {
-      return <span className="source-type-badge rag">RAG evidence</span>;
+      return <span className="source-type-badge rag">أدلة RAG</span>;
     }
     if (source.trusted) {
-      return <span className="source-type-badge trusted">Trusted web</span>;
+      return <span className="source-type-badge trusted">ويب موثوق</span>;
     }
     return (
-      <span className="source-type-badge untrusted">
-        General web (untrusted)
-      </span>
+      <span className="source-type-badge untrusted">ويب عام (غير موثوق)</span>
     );
   };
 
+  // تجميع المصادر حسب النوع
   const groupSources = (sources = []) => {
     const rag = [];
     const webTrusted = [];
@@ -102,7 +118,7 @@ function App() {
     return { rag, webTrusted, webUntrusted };
   };
 
-  // Toggle helpers (default is collapsed; undefined or true = collapsed)
+  // تبديل الطيّ
   const toggleRag = (claimIdx) => {
     setCollapsedRag((prev) => {
       const isCollapsed = prev[claimIdx] !== false;
@@ -122,12 +138,21 @@ function App() {
     });
   };
 
+  // ترجمة شارة الصلة إن أتت من الـ API بنص إنجليزي (fallback)
+  const tRelevance = (text, idx) => {
+    if (text === "Most Relevant" || (!text && idx === 0)) return "الأكثر صلة";
+    if (text === "Moderately Relevant" || (!text && idx === 1))
+      return "متوسط الصلة";
+    if (text === "Supporting Evidence" || !text) return "دليل داعم";
+    return text; // في حال كانت راجعة بالعربي أصلاً
+  };
+
   return (
-    <div className="App">
+    <div className="App" dir="rtl">
       <div className="container">
         <header className="header">
-          <h1>🩺 AI Diabetes MythBuster</h1>
-          <p>Fact-check diabetes claims in YouTube videos</p>
+          <h1>🩺 كاشف خرافات السكري</h1>
+          <p>تحقّق من ادعاءات السكري في فيديوهات يوتيوب</p>
         </header>
 
         <form onSubmit={handleSubmit} className="form">
@@ -136,16 +161,17 @@ function App() {
               type="url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="Enter YouTube video URL (e.g., https://youtube.com/watch?v=...)"
+              placeholder="أدخل رابط فيديو يوتيوب (مثال: https://youtube.com/watch?v=...)"
               className="url-input"
               disabled={loading}
+              dir="ltr" /* الروابط أفضل تبقى LTR */
             />
             <button
               type="submit"
               className="submit-btn"
               disabled={loading || !url.trim()}
             >
-              {loading ? "🔄 Processing..." : "🔍 Analyze Video"}
+              {loading ? "🔄 جاري المعالجة…" : "🔍 تحليل الفيديو"}
             </button>
           </div>
         </form>
@@ -153,16 +179,16 @@ function App() {
         {loading && (
           <div className="loading">
             <div className="spinner"></div>
-            <p>Downloading and analyzing video... This may take a moment.</p>
+            <p>جاري تنزيل الفيديو وتحليله…</p>
           </div>
         )}
 
         {error && (
           <div className="error-card">
-            <h3>❌ Error</h3>
+            <h3>❌ خطأ</h3>
             <p>{error}</p>
             <button onClick={clearResults} className="clear-btn">
-              Try Again
+              المحاولة من جديد
             </button>
           </div>
         )}
@@ -170,59 +196,62 @@ function App() {
         {result && (
           <div className="results">
             <div className="success-header">
-              <h2>✅ Analysis Complete</h2>
+              <h2>✅ تم التحليل</h2>
               <button onClick={clearResults} className="clear-btn">
-                Analyze New Video
+                تحليل فيديو جديد
               </button>
             </div>
 
-            {/* Video Information */}
+            {/* معلومات الفيديو */}
             <div className="card">
-              <h3>📁 Video Information</h3>
+              <h3>📁 معلومات الفيديو</h3>
 
               <p>
-                <strong>URL:</strong>{" "}
+                <strong>الرابط:</strong>{" "}
                 <a
                   href={result.url}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="url-link"
+                  dir="ltr"
                 >
-                  {result.url?.length > 50
-                    ? result.url.substring(0, 50) + "..."
+                  {result.url?.length > 70
+                    ? result.url.substring(0, 70) + "..."
                     : result.url}
                 </a>
               </p>
             </div>
 
-            {/* Transcription */}
+            {/* نص التفريغ */}
             <div className="card">
-              <h3>🎤 Video Transcription</h3>
+              <h3>🎤 نص التفريغ</h3>
               <div className="transcription-box">
                 {result.transcription ? (
-                  <p className="transcription-text">{result.transcription}</p>
+                  <p className="transcription-text" dir="rtl">
+                    {result.transcription}
+                  </p>
                 ) : (
-                  <p className="error-text">No transcription available</p>
+                  <p className="error-text">لا يوجد نص تفريغ</p>
                 )}
               </div>
             </div>
 
-            {/* Claims Analysis */}
+            {/* تحليل الادعاءات */}
             <div className="card">
-              <h3>🔍 Diabetes Claims Analysis & Fact-Checking</h3>
+              <h3>🔍 تحليل الادعاءات والتحقّق</h3>
               {result.claims && result.claims.length > 0 ? (
                 <div className="claims-section">
                   <p className="claims-intro">
-                    Found {result.claims.length} diabetes-related claim(s) with
-                    medical fact-checks:
+                    تم العثور على {result.claims.length} ادعاء(ات) متعلقة
+                    بالسكري مع نتائج التحقّق الطبية:
                   </p>
 
                   <div className="claims-list">
                     {result.verdicts && result.verdicts.length > 0
                       ? result.verdicts.map((verdict, index) => {
                           const { rag, webTrusted, webUntrusted } =
-                            groupSources(verdict.sources);
-                          // Collapsed by default unless explicitly set to false
+                            groupSources(verdict.sources || []);
+
                           const ragCollapsed = collapsedRag[index] !== false;
                           const trustedCollapsed =
                             collapsedTrusted[index] !== false;
@@ -232,44 +261,48 @@ function App() {
                           return (
                             <div
                               key={index}
-                              className={`claim-item verdict-${verdict.verdict?.toLowerCase()}`}
+                              className={`claim-item verdict-${(
+                                verdict.verdict || ""
+                              ).toLowerCase()}`}
                             >
                               <div className="claim-header">
                                 <div className="claim-number">{index + 1}</div>
                                 <div
-                                  className={`verdict-badge verdict-${verdict.verdict?.toLowerCase()}`}
+                                  className={`verdict-badge verdict-${(
+                                    verdict.verdict || ""
+                                  ).toLowerCase()}`}
                                 >
-                                  {verdict.verdict === "TRUE" && "✅ TRUE"}
-                                  {verdict.verdict === "FALSE" && "❌ FALSE"}
+                                  {verdict.verdict === "TRUE" && "✅ صحيح"}
+                                  {verdict.verdict === "FALSE" && "❌ غير صحيح"}
                                   {verdict.verdict === "PARTIALLY_TRUE" &&
-                                    "⚠️ PARTIAL"}
+                                    "⚠️ صحيح جزئياً"}
                                   {verdict.verdict === "INSUFFICIENT_INFO" &&
-                                    "❓ UNCLEAR"}
+                                    "❓ لا توجد أدلة كافية للحكم"}
                                 </div>
                               </div>
 
                               <div className="claim-text" dir="rtl">
-                                {verdict.claim}
+                                {"الادعاء: " + verdict.claim}
                               </div>
                               <div className="medical-reasoning" dir="rtl">
-                                <strong>Medical Explanation:</strong>{" "}
+                                <strong>التفسير الطبي:</strong>{" "}
                                 {verdict.reasoning}
                               </div>
                               <div className="medical-category">
-                                <strong>Category:</strong>{" "}
-                                {verdict.medical_category}
+                                <strong>التصنيف:</strong>{" "}
+                                {tCategory(verdict.medical_category)}
                               </div>
 
-                              {/* Sources */}
+                              {/* الأدلة والمصادر */}
                               {rag.length > 0 ||
                               webTrusted.length > 0 ||
                               webUntrusted.length > 0 ? (
                                 <div className="sources-section">
                                   <h4 className="sources-heading">
-                                    Evidence & Sources
+                                    الأدلة والمصادر
                                   </h4>
 
-                                  {/* RAG group (collapsible) */}
+                                  {/* RAG */}
                                   {rag.length > 0 && (
                                     <div className="sources-group rag-group">
                                       <button
@@ -280,13 +313,13 @@ function App() {
                                         onClick={() => toggleRag(index)}
                                       >
                                         <span>
-                                          📚 <strong>RAG evidence</strong> (
+                                          📚 <strong>أدلة RAG</strong> (
                                           {rag.length})
                                         </span>
                                         <span
                                           className="chevron"
                                           style={{
-                                            marginLeft: 8,
+                                            marginInlineStart: 8,
                                             display: "inline-block",
                                             transition: "transform 0.18s ease",
                                             transform: ragCollapsed
@@ -324,16 +357,16 @@ function App() {
                                                         target="_blank"
                                                         rel="noopener noreferrer"
                                                         className="source-link"
+                                                        dir="ltr"
                                                       >
                                                         {source.source_name ||
-                                                          "Source"}
+                                                          "مصدر"}
                                                       </a>
                                                     ) : (
                                                       source.source_name ||
-                                                      "Source"
+                                                      "مصدر"
                                                     )}
                                                   </span>
-                                                  {/* {renderTrustBadge(source)} */}
                                                 </div>
                                                 <span
                                                   className={`relevance-badge ${
@@ -341,8 +374,10 @@ function App() {
                                                     "primary"
                                                   }`}
                                                 >
-                                                  {source.relevance_display ||
-                                                    "Most Relevant"}
+                                                  {tRelevance(
+                                                    source.relevance_display,
+                                                    sourceIndex
+                                                  )}
                                                 </span>
                                               </div>
 
@@ -356,7 +391,7 @@ function App() {
                                     </div>
                                   )}
 
-                                  {/* Trusted web group (collapsible) */}
+                                  {/* ويب موثوق */}
                                   {webTrusted.length > 0 && (
                                     <div className="sources-group web-trusted-group">
                                       <button
@@ -367,13 +402,14 @@ function App() {
                                         onClick={() => toggleTrusted(index)}
                                       >
                                         <span>
-                                          🔍 <strong>Web search sources</strong>{" "}
+                                          🔍{" "}
+                                          <strong>مصادر البحث من الويب</strong>{" "}
                                           ({webTrusted.length})
                                         </span>
                                         <span
                                           className="chevron"
                                           style={{
-                                            marginLeft: 8,
+                                            marginInlineStart: 8,
                                             display: "inline-block",
                                             transition: "transform 0.18s ease",
                                             transform: trustedCollapsed
@@ -414,16 +450,16 @@ function App() {
                                                           target="_blank"
                                                           rel="noopener noreferrer"
                                                           className="source-link"
+                                                          dir="ltr"
                                                         >
                                                           {source.source_name ||
-                                                            "Source"}
+                                                            "مصدر"}
                                                         </a>
                                                       ) : (
                                                         source.source_name ||
-                                                        "Source"
+                                                        "مصدر"
                                                       )}
                                                     </span>
-                                                    {/* {renderTrustBadge(source)} */}
                                                   </div>
                                                   <span
                                                     className={`relevance-badge ${
@@ -431,105 +467,11 @@ function App() {
                                                       "secondary"
                                                     }`}
                                                   >
-                                                    {source.relevance_display ||
-                                                      "Moderately Relevant"}
+                                                    {tRelevance(
+                                                      source.relevance_display,
+                                                      sourceIndex
+                                                    )}
                                                   </span>
-                                                </div>
-
-                                                <div className="source-preview">
-                                                  {source.content_preview}
-                                                </div>
-                                              </div>
-                                            )
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {/* Untrusted web group (collapsible, default collapsed) */}
-                                  {webUntrusted.length > 0 && (
-                                    <div className="sources-group web-untrusted-group">
-                                      <button
-                                        type="button"
-                                        className="sources-group-header collapsible"
-                                        aria-expanded={!untrustedCollapsed}
-                                        aria-controls={`untrusted-panel-${index}`}
-                                        onClick={() => toggleUntrusted(index)}
-                                      >
-                                        <span>
-                                          🌐{" "}
-                                          <strong>
-                                            Web search sources that are not used
-                                            in judgment (untrusted)
-                                          </strong>{" "}
-                                          ({webUntrusted.length})
-                                        </span>
-                                        <span
-                                          className="chevron"
-                                          style={{
-                                            marginLeft: 8,
-                                            display: "inline-block",
-                                            transition: "transform 0.18s ease",
-                                            transform: untrustedCollapsed
-                                              ? "rotate(0deg)"
-                                              : "rotate(180deg)",
-                                          }}
-                                        >
-                                          ▾
-                                        </span>
-                                      </button>
-
-                                      <div
-                                        id={`untrusted-panel-${index}`}
-                                        style={{
-                                          display: untrustedCollapsed
-                                            ? "none"
-                                            : "block",
-                                        }}
-                                      >
-                                        {/* <p className="untrusted-note">
-                                          Items below are not on our trusted medical list; we include them for transparency.
-                                        </p> */}
-                                        <div className="sources-list">
-                                          {webUntrusted.map(
-                                            (source, sourceIndex) => (
-                                              <div
-                                                key={`uweb-${index}-${sourceIndex}`}
-                                                className="source-item untrusted-source"
-                                              >
-                                                <div className="source-header">
-                                                  <div className="source-name-container">
-                                                    <span className="source-icon">
-                                                      {getSourceIcon(source)}
-                                                    </span>
-                                                    <span className="source-name">
-                                                      {source.source_url ? (
-                                                        <a
-                                                          href={
-                                                            source.source_url
-                                                          }
-                                                          target="_blank"
-                                                          rel="noopener noreferrer"
-                                                          className="source-link"
-                                                        >
-                                                          {source.source_name ||
-                                                            "Source"}
-                                                        </a>
-                                                      ) : (
-                                                        source.source_name ||
-                                                        "Source"
-                                                      )}
-                                                    </span>
-                                                    {/* {renderTrustBadge(source)} */}
-                                                  </div>
-                                                  {/* <span
-                                                  className={`relevance-badge ${
-                                                    source.relevance_badge || "neutral"
-                                                  }`}
-                                                >
-                                                  {source.relevance_display || "Supporting Evidence"}
-                                                </span> */}
                                                 </div>
 
                                                 <div className="source-preview">
@@ -545,14 +487,13 @@ function App() {
                                 </div>
                               ) : (
                                 <div className="no-sources">
-                                  No supporting sources were attached for this
-                                  claim.
+                                  لا توجد مصادر داعمة لهذا الادعاء.
                                 </div>
                               )}
                             </div>
                           );
                         })
-                      : // Fallback if no verdicts yet
+                      : // في حال عدم وصول أحكام بعد
                         result.claims.map((claim, index) => (
                           <div key={index} className="claim-item">
                             <div className="claim-number">{index + 1}</div>
@@ -561,7 +502,7 @@ function App() {
                             </div>
                             <div className="claim-actions">
                               <span className="processing-note">
-                                Fact-check processing...
+                                جاري التحقّق…
                               </span>
                             </div>
                           </div>
@@ -570,46 +511,22 @@ function App() {
                 </div>
               ) : (
                 <div className="no-claims">
-                  <p>ℹ️ This video does not contain diabetes-related claims.</p>
-                  <small>
-                    The AI analyzed the content and determined it's not about
-                    diabetes.
-                  </small>
+                  <p>ℹ️ لا توجد ادعاءات متعلقة بالسكري في هذا الفيديو.</p>
+                  <small>حدّد الذكاء الاصطناعي أن المحتوى ليس عن السكري.</small>
                 </div>
               )}
             </div>
-
-            {/* Processing Status
-            <div className="card">
-              <h3>📊 Processing Status</h3>
-              <div className="status-info">
-                <p>
-                  <strong>Status:</strong>{" "}
-                  <span className={`status ${result.success ? "success" : "error"}`}>
-                    {result.success ? "✅ Success" : "❌ Failed"}
-                  </span>
-                </p>
-                <p>
-                  <strong>Message:</strong> {result.message}
-                </p>
-                {result.from_cache && (
-                  <p className="cache-info">
-                    ⚡ This result was retrieved from cache, saving time and resources!
-                  </p>
-                )}
-              </div>
-            </div> */}
           </div>
         )}
       </div>
 
       <ToastContainer
-        position="top-right"
+        position="top-left"
         autoClose={5000}
         hideProgressBar={false}
         newestOnTop={false}
         closeOnClick
-        rtl={false}
+        rtl={true}
         pauseOnFocusLoss
         draggable
         pauseOnHover

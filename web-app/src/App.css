@@ -1288,3 +1288,58 @@ input:focus,
     break-inside: avoid;
   }
 }
+
+
+/* ==== Fix URL Input visibility ==== */
+.url-input {
+  color: #1a202c !important;        
+  font-weight: 500;
+}
+
+.url-input::placeholder {
+  color: #718096 !important;       
+  opacity: 1;                       
+}
+
+/* ==== Fix Medical Explanation text ==== */
+.medical-reasoning {
+  color: #1a202c !important;       
+  font-weight: 500;
+  line-height: 1.7;                 
+}
+
+.medical-reasoning strong {
+  color: #111827 !important;        
+  font-weight: 700;                 
+}
+
+
+.source-preview {
+  direction: ltr;
+  unicode-bidi: plaintext;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
