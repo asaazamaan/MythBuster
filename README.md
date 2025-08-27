@@ -201,5 +201,38 @@ git push origin new-feature-name
   - Go to Github.com and select the branch you just push
   - Click on *Contribute*, then click *Open Pull Request*
 
+## References & Documentation
+
+This project integrates several external tools, APIs, and resources. Below are the main technologies used along with their documentation:
+
+- **OpenAI API**  
+  - **Whisper Large**: Used to transcribe text from audio files.  
+  - **GPT-5**: Used to generate ground truths and perform AI-as-a-judge evaluation of claims.  
+  [Docs → OpenAI Text Models](https://platform.openai.com/docs/guides/text)
+
+- **yt-dlp**  
+  Used to download YouTube and TikTok videos for transcription and analysis.  
+  [Docs → yt-dlp GitHub](https://github.com/yt-dlp/yt-dlp)
+
+- **Serper.dev**  
+  Used for web search queries to retrieve supporting evidence.  
+  [Docs → Serper.dev](https://serper.dev)
+
+- **Gemini API (Flash 1.5)**  
+  - **Claim Extraction**: Identifies potential factual claims in transcribed text.  
+  - **Claim Evaluation**: Assesses the truthfulness of claims after injecting external context (from RAG + web search).  
+  [Docs → Gemini API](https://ai.google.dev/gemini-api)
+
+- **RAG System**  
+  Built with **ChromaDB** as the vector store and the embedding model **all-MiniLM-L6-v2** from SentenceTransformers.  
+  Additional scientific content was indexed from **arXiv** for diabetes-related research.  
+  [ChromaDB Docs](https://docs.trychroma.com/)  
+  [SentenceTransformers all-MiniLM-L6-v2](https://www.sbert.net/docs/pretrained_models.html)  
+  [arXiv](https://arxiv.org/)
+
+- **Additional Resources**  
+  The repository [Automated Fact-Checking Resources](https://github.com/Cartus/Automated-Fact-Checking-Resources) provided valuable references and datasets for building the pipeline.
+
+
 ## License
 This project is licensed under the MIT License.
