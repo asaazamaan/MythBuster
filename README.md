@@ -1,5 +1,7 @@
 # Project Fact_Checker
-Fact_Checker is an innovative platform for.......
+Fact_Checker is an innovative platform for detecting and evaluating medical claims in online videos.  
+It automatically downloads content (YouTube, TikTok), transcribes speech into text, extracts factual claims, and verifies them against trusted medical sources using a Retrieval Augmented Generation (RAG) system.  
+By combining transcription (Whisper Large), claim extraction and evaluation (Gemini + GPT-5), web search (Serper.dev), and a medical knowledge base (ChromaDB + arXiv), Fact_Checker provides accurate verdicts with citations to help combat misinformation.
 
  #### project structure
 
