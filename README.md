@@ -91,19 +91,6 @@ Each verdict is accompanied by:
 
 ---
 
-## Demo
-
-A recorded walkthrough demonstrates:
-
-- Full end-to-end execution (no mock data)  
-- Multiple verdict types (TRUE, FALSE, PARTIALLY TRUE, INSUFFICIENT INFO)  
-- Domain filtering and input constraint handling  
-
-👉 **Demo page:**  
-https://asaazamaan.github.io/mythbuster-demo/
-
----
-
 ## Project Status
 
 - **Type:** Research prototype / demo system  
