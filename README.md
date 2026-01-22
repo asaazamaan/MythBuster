@@ -1,240 +1,120 @@
-# Project Fact_Checker
-Fact_Checker is an innovative platform for detecting and evaluating medical claims in online videos.  
-It automatically downloads content (YouTube, TikTok), transcribes speech into text, extracts factual claims, and verifies them against trusted medical sources using a Retrieval Augmented Generation (RAG) system.  
-By combining transcription (Whisper Large), claim extraction and evaluation (Gemini + GPT-5), web search (Serper.dev), and a medical knowledge base (ChromaDB + arXiv), Fact_Checker provides accurate verdicts with citations to help combat misinformation.
+MythBuster: Automated Fact-Checking for Arabic Videos About Diabetes
 
- #### project structure
+🔗 Live demo: https://asaazamaan.github.io/mythbuster-demo/
 
-- React frontend
-- Python backend API server
-- PostgreSQL database
-- pgAdmin for database management
-- Database initialization scripts
-- Docker Compose
-- RAG (Retrieval Augmented Generation) system with ChromaDB for fact-checking
+🎥 Demo video: https://www.youtube.com/watch?v=p8ZqCEGbmfs
 
-## Services
+MythBuster is an end-to-end system that automatically fact-checks diabetes-related medical claims in short Arabic videos.
+Given a video URL, the system transcribes spoken Arabic, extracts check-worthy medical claims, retrieves supporting evidence, and produces evidence-grounded Arabic verdicts.
 
-| Service              | URL                                 | Description                           |
-|----------------------|-------------------------------------|---------------------------------------|
-| PostgreSQL           | `postgres://localhost:5432`         | Main application database             |
-| pgAdmin              | `http://localhost:5050`             | Database management interface         |
-| React App            | `http://localhost:3000`             | Frontend web application              |
-| FastAPI API Server   | `http://localhost:4000`             | Backend API with RAG integration     |
-| ChromaDB             | Local file storage in `.chromadb/`  | Vector database for medical knowledge |
+This repository accompanies the poster presentation at MENA ML Winter School 2026 (KAUST).
 
-## Usage
+Motivation
 
-- Copy the example environment file to create your .env file:
+Diabetes-related misinformation spreads rapidly in short Arabic videos.
 
-```shell
-cp example.env .env
-```
+Manual verification is slow and inaccessible to most viewers.
 
-- Start the containers:
+Most existing automated fact-checking systems focus on English text, not Arabic medical video content.
 
-```shell
-docker compose up
-```
+MythBuster addresses this gap by combining speech-to-text, claim extraction, retrieval, and reasoning into a single automated pipeline.
 
-## Database Initialization
+System Overview
 
-To create and populate database tables:
-1. Edit the SQL scripts in the db-init-scripts/ directory:
-  - `01_init_db.sql`: Create tables
-  - `02_insert_db.sql`: Insert initial data
+End-to-end pipeline:
 
-2. Rebuild the containers with the new scripts:
+Video ingestion
+User submits a short YouTube video URL (≤ 2 minutes)
 
-> **Caution:** This will stop all running containers, and remove all named volumes declared in the "volumes" section as well as all anonymous volumes attached to containers.
+Speech-to-text (STT)
+Arabic speech is transcribed into text
 
-```shell
-docker compose down -v
-docker compose up --build db
-```
+Claim extraction
+Medically relevant diabetes claims are extracted from the transcript
 
-3. Verify that all four containers are running:
-```shell
-docker ps
-```
-If any container is not running, check the logs:
-```shell
-docker ps -a
-docker logs <id_of_the_stopped_container>
-```
+Evidence retrieval
 
-## Developing the API locally
+Trusted medical web sources (domain-filtered search)
 
-You should use an en
-### Adding dependencies to the API service
+Scientific literature via Retrieval-Augmented Generation (RAG)
 
-If you `pip install` a package in the API service, you need to update the `requirements.txt`:
+Verdict generation
+Claims are classified and explained with Arabic medical reasoning
 
-```shell
-pip freeze > requirements.txt
-```
+Verdict Labels
 
-and then restart the api container:
+Each extracted claim receives one of the following verdicts:
 
-```shell
-docker compose down
-docker compose up --build api
-```
+TRUE
 
-## RAG System Setup (ChromaDB & Medical Knowledge Base)
+FALSE
 
-The project includes a RAG (Retrieval Augmented Generation) system that uses ChromaDB to store and query medical information for fact-checking claims about health topics.
+PARTIALLY TRUE
 
-### Setting up the RAG Virtual Environment
+INSUFFICIENT INFO
 
-1. Navigate to the RAG directory:
-```shell
-cd rag/
-```
+Each verdict is accompanied by:
 
-2. Create and activate a Python virtual environment:
-```shell
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
+Concise Arabic medical explanation
 
-3. Install the required dependencies:
-```shell
-pip install -r requirements.txt
-```
+Supporting evidence with source links
 
-> **Note:** The RAG system uses ChromaDB v0.4.22 and NumPy v1.24.3 for compatibility. These specific versions are required for proper functioning.
+Key Contributions
 
-### ChromaDB Knowledge Base Setup
+End-to-end Arabic video fact-checking (URL → verdict)
 
-1. **Index Medical Sources (trusted sites)**:
-```shell
-cd rag/
-source venv/bin/activate
-python index_from_url.py
-```
+Hybrid evidence grounding: trusted web search + RAG over scientific literature
 
-1b. **Optional: Index arXiv papers (same collection, equal weight)**:
-```shell
-cd rag/
-source venv/bin/activate
-python index_from_arxiv.py
-```
-- This will fetch up to 150 arXiv papers for “diabetes” and index full PDF text when available (fallback to abstracts). Data is stored in the same ChromaDB collection with metadata, no special weighting.
+Structured, explainable outputs with Arabic medical reasoning
 
-2. **Test ChromaDB Setup**: Verify that the knowledge base is properly indexed:
-```shell
-python test_chromadb.py
-```
+Robust system design with input validation, caching, and clear error handling
 
-3. **ChromaDB Data Persistence**: The ChromaDB database is stored in `.chromadb/` directory at the project root. This ensures data persistence across container restarts.
+Tech Stack
 
-### RAG System Components
+Backend: FastAPI
 
-- **`utils.py`**: Core utilities for web scraping, text chunking, embeddings, and ChromaDB operations
-- **`index_from_url.py`**: Script to index medical content from URLs listed in `diabet_urls.txt`
-- **`index_from_arxiv.py`**: Script to index arXiv titles/abstracts or full PDFs into the same collection
-- **`test_chromadb.py`**: Test script to verify ChromaDB functionality and search capabilities
-- **`diabet_urls.txt`**: List of trusted medical sources for diabetes-related information
-- **`requirements.txt`**: All Python dependencies with exact versions for the RAG environment
+Frontend: React
 
-### RAG Integration with API
+Database: PostgreSQL (result caching & storage)
 
-The RAG system is integrated into the main API through:
-- Medical claim fact-checking with source citations
-- Similarity search using sentence transformers
-- Multi-language support (Arabic to English translation)
-- Source relevance scoring and user-friendly displays
+Retrieval:
 
-### Troubleshooting RAG Setup
+Trusted web search
 
-If you encounter issues:
+RAG using ChromaDB over medical literature
 
-1. **ChromaDB Version Error**: Ensure you're using ChromaDB 0.4.22, not newer versions
-2. **NumPy Compatibility**: Use NumPy 1.24.3 for compatibility with ChromaDB 0.4.22
-3. **Empty Database**: Run `index_from_url.py` to populate the knowledge base
-4. **Permission Issues**: Ensure `.chromadb/` directory has proper write permissions
+Deployment: Docker (full-stack containerized setup)
 
-## Managing Secrets and Environment Variables
+Demo
 
-- For production environments, use Docker secrets:
-  - Edit the `docker-compose.yml` file
-  - Add a secrets attribute under each service that requires secure data.
-  ```yaml
-  version: '3.7'
-  services:
-    react_app:
-      secrets:
-        - app_secret
+A recorded walkthrough demonstrates:
 
-  secrets:
-    app_secret:
-      file: ./app_secret.txt
-  ```
+Full end-to-end execution (no mock data)
 
-- For development environments, use environment variables:
-  - Add variables to the .env file, e.g.:
-  ```shell
-  API_SERVER_KEY=0123456789abcdefghijklmnopqrstuvwxyz
-  ```
-  -  Update the docker-compose.yml file to use the environment variables:
-  ```yaml
-  api:
-    environment:
-      - API_SERVER_PORT=${API_SERVER_PORT}
-      - POSTGRES_HOST=postgres16
-      - API_SERVER_KEY=${API_SERVER_KEY}
-  ```
+Multiple verdict types (TRUE, FALSE, PARTIALLY TRUE, INSUFFICIENT INFO)
 
-## Contribution
+Domain filtering and input constraint handling
 
-- Create a new branch for the feature
+👉 See the demo page:
+https://asaazamaan.github.io/mythbuster-demo/
 
-```
-git branch -b new-feature-name
-```
-- Push your changes to a remote branch
+Project Status
 
-```
-git push origin new-feature-name
-```
+Type: Research prototype / demo system
 
-- Create a PR (Pull Request)
-  - Go to Github.com and select the branch you just push
-  - Click on *Contribute*, then click *Open Pull Request*
+Presented at: MENA ML Winter School 2026 (KAUST)
 
-## References & Documentation
+Focus: Applied ML + full-stack system design for medical misinformation
 
-This project integrates several external tools, APIs, and resources. Below are the main technologies used along with their documentation:
+This repository is intended for demonstration and discussion, not as a production-ready service.
 
-- **OpenAI API**  
-  - **Whisper Large**: Used to transcribe text from audio files.  
-  - **GPT-5**: Used to generate ground truths and perform AI-as-a-judge evaluation of claims.  
-  [Docs → OpenAI Text Models](https://platform.openai.com/docs/guides/text)
+Contact
 
-- **yt-dlp**  
-  Used to download YouTube and TikTok videos for transcription and analysis.  
-  [Docs → yt-dlp GitHub](https://github.com/yt-dlp/yt-dlp)
+Ahmed Saleh Ahmed Akhtarulzaman
+📧 asaazamaan@gmail.com
 
-- **Serper.dev**  
-  Used for web search queries to retrieve supporting evidence.  
-  [Docs → Serper.dev](https://serper.dev)
+🔗 GitHub: https://github.com/asaazamaan
 
-- **Gemini API (Flash 1.5)**  
-  - **Claim Extraction**: Identifies potential factual claims in transcribed text.  
-  - **Claim Evaluation**: Assesses the truthfulness of claims after injecting external context (from RAG + web search).  
-  [Docs → Gemini API](https://ai.google.dev/gemini-api)
+License
 
-- **RAG System**  
-  Built with **ChromaDB** as the vector store and the embedding model **all-MiniLM-L6-v2** from SentenceTransformers.  
-  Additional scientific content was indexed from **arXiv** for diabetes-related research.  
-  [ChromaDB Docs](https://docs.trychroma.com/)  
-  [SentenceTransformers all-MiniLM-L6-v2](https://www.sbert.net/docs/pretrained_models.html)  
-  [arXiv](https://arxiv.org/)
-
-- **Additional Resources**  
-  The repository [Automated Fact-Checking Resources](https://github.com/Cartus/Automated-Fact-Checking-Resources) provided valuable references and datasets for building the pipeline.
-
-
-## License
 This project is licensed under the MIT License.
