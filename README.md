@@ -75,14 +75,14 @@ Each verdict is accompanied by:
 - Robust system design with input validation, caching, and clear error handling  
 
 ---
-
 ## Tech Stack & Key Components
 
 - **Speech-to-text:** Whisper-Large (Arabic STT)  
 - **Claim extraction:** Gemini 1.5 Flash (structured JSON outputs)  
-- - **Fact-checking:** Hybrid retrieval-based verification combining domain-filtered web search with RAG over an arXiv-based research corpus (ChromaDB) 
-- **Web search:** Serper.dev (trusted, domain-filtered sources)  
-- **RAG:** ChromaDB over a curated research corpus  
+- **Fact-checking:** Hybrid retrieval-based verification with evidence grounding  
+- **Retrieval sources:**  
+  - Trusted, domain-filtered medical web search (Serper.dev)  
+  - RAG over an arXiv-based research corpus (ChromaDB)  
 - **Embeddings:** all-MiniLM-L6-v2 (Sentence Transformers)  
 - **Backend:** FastAPI  
 - **Frontend:** React  
