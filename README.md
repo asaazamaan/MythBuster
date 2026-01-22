@@ -80,7 +80,7 @@ Each verdict is accompanied by:
 
 - **Speech-to-text:** Whisper-Large (Arabic STT)  
 - **Claim extraction:** Gemini 1.5 Flash (structured JSON outputs)  
-- **Fact-checking:** Hybrid retrieval-based verification  
+- - **Fact-checking:** Hybrid retrieval-based verification combining domain-filtered web search with RAG over an arXiv-based research corpus (ChromaDB) 
 - **Web search:** Serper.dev (trusted, domain-filtered sources)  
 - **RAG:** ChromaDB over a curated research corpus  
 - **Embeddings:** all-MiniLM-L6-v2 (Sentence Transformers)  
