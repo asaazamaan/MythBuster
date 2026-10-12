@@ -8,6 +8,10 @@
 Given a video URL, the system transcribes spoken Arabic, extracts check-worthy medical claims, retrieves supporting evidence, and produces **evidence-grounded Arabic verdicts** with concise medical reasoning.
 
 MythBuster was developed as part of the **KAUST Academy Artificial Intelligence Specialization Graduation Project** and was subsequently presented at **MENA ML Winter School 2026**, hosted at **King Abdullah University of Science and Technology (KAUST), Saudi Arabia**.
+
+---
+
+## Motivation
 ---
 
 ## Motivation
