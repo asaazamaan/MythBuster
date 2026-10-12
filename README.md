@@ -91,6 +91,7 @@ The results indicate that integrating trusted web search and Retrieval-Augmented
 - Robust system design with input validation, caching, and clear error handling  
 
 ---
+
 ## Tech Stack & Key Components
 
 - **Speech-to-text:** Whisper-Large (Arabic STT)  
@@ -119,12 +120,14 @@ The results indicate that integrating trusted web search and Retrieval-Augmented
 **Status:** Functional prototype developed and evaluated as an academic project.
 
 ---
+
 ## Academic Presentations
 
 MythBuster was presented at:
 
 - **KAUST Academy Artificial Intelligence Specialization Graduation Project** — [View Poster](docs/posters/MythBuster_KAUST_Poster.pdf)
 - **MENA ML Winter School 2026 (KAUST)** — [View Poster](docs/posters/MythBuster_MenaML_Poster.pdf)
+
 ---
 
 ## Contact
