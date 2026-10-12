@@ -118,6 +118,7 @@ The results indicate that integrating trusted web search and Retrieval-Augmented
 **Status:** Functional prototype developed and evaluated as an academic project.
 
 ---
+## Academic Presentations
 
 MythBuster was presented at:
 
