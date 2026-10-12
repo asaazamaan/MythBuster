@@ -12,9 +12,6 @@ MythBuster was developed as part of the **KAUST Academy Artificial Intelligence 
 ---
 
 ## Motivation
----
-
-## Motivation
 
 - Diabetes-related misinformation spreads rapidly in short Arabic videos  
 - Manual verification is slow and inaccessible to most viewers  
