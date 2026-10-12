@@ -59,9 +59,25 @@ Each verdict is accompanied by:
 
 ## Results & Key Findings
 
-- **Arabic STT quality:** Benchmarking across multiple models showed that **Whisper-Large** consistently achieved the highest transcription quality for Arabic health videos, outperforming **Whisper-Medium**, **GPT-4o**, and **GPT-4o-mini**.
+### Arabic Speech Recognition
 
-- **Effect of retrieval grounding and system design:** Incorporating **trusted web search and Retrieval-Augmented Generation (RAG)** significantly improved claim verification reliability compared to LLM-only baselines. With evidence grounding enabled, the final pipeline produced **structured, evidence-grounded verdicts with concise Arabic medical reasoning**, achieving **near–expert-level performance** that approached the quality of a **GPT-5–based LLM-as-Judge evaluation**, while robustly handling edge cases such as non-diabetes videos and input constraints.
+Among the evaluated models, **Whisper-Large** achieved the strongest reported Arabic transcription performance, outperforming Whisper-Medium, GPT-4o, and GPT-4o-mini.
+
+### Fact-Checking Evaluation
+
+We compared a baseline configuration against the final evidence-grounded pipeline using a **GPT-5-based LLM-as-a-Judge evaluation protocol**.
+
+The MENA ML 2026 poster reports the following results for matched claims:
+
+| Metric | Baseline | Final Pipeline |
+|---|---:|---:|
+| Weighted Accuracy | 0.70 | 0.97 |
+| Hard Accuracy | 0.55 | 0.94 |
+| Macro F1 (weighted) | 0.60 | 0.95 |
+
+The results indicate that integrating trusted web search and Retrieval-Augmented Generation (RAG) improved verdict quality under the reported evaluation protocol compared with the baseline.
+
+**Evaluation limitation:** These results were obtained using an LLM-based evaluation protocol and should not be interpreted as independently validated clinical accuracy.
 
 
 ---
