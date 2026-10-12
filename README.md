@@ -119,11 +119,10 @@ The results indicate that integrating trusted web search and Retrieval-Augmented
 
 ---
 
-Academic Presentations
+MythBuster was presented at:
 
-MythBuster was developed and presented as part of the KAUST Academy Artificial Intelligence Specialization Graduation Project and subsequently presented at MENA ML Winter School 2026, hosted at KAUST.
-- [KAUST Academy Graduation Project Poster](docs/posters/MythBuster_KAUST_Poster.pdf)
-- [MENA ML Winter School 2026 Poster](docs/posters/MythBuster_MenaML_Poster.pdf)
+- **KAUST Academy Artificial Intelligence Specialization Graduation Project** — [View Poster](docs/posters/MythBuster_KAUST_Poster.pdf)
+- **MENA ML Winter School 2026 (KAUST)** — [View Poster](docs/posters/MythBuster_MenaML_Poster.pdf)
 ---
 
 ## Contact
@@ -133,7 +132,3 @@ MythBuster was developed and presented as part of the KAUST Academy Artificial I
 🔗 GitHub: https://github.com/asaazamaan  
 
 ---
-
-## License
-
-This project is licensed under the **MIT License**.
