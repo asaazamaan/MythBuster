@@ -7,8 +7,7 @@
 
 Given a video URL, the system transcribes spoken Arabic, extracts check-worthy medical claims, retrieves supporting evidence, and produces **evidence-grounded Arabic verdicts** with concise medical reasoning.
 
-This repository accompanies the poster presentation at **:contentReference[oaicite:0]{index=0} 2026**, hosted at **:contentReference[oaicite:1]{index=1}**.
-
+MythBuster was developed as part of the **KAUST Academy Artificial Intelligence Specialization Graduation Project** and was subsequently presented at **MENA ML Winter School 2026**, hosted at **King Abdullah University of Science and Technology (KAUST), Saudi Arabia**.
 ---
 
 ## Motivation
@@ -93,11 +92,14 @@ Each verdict is accompanied by:
 
 ## Project Status
 
-- **Type:** Research prototype / demo system  
-- **Presented at:** MENA ML Winter School 2026 (KAUST)  
-- **Focus:** Applied ML + full-stack system design for medical misinformation  
-
-This repository is intended for **demonstration and discussion**, not as a production-ready service.
+- **Type:** End-to-End AI-Powered Application
+- **Developed as:** KAUST Academy Artificial Intelligence Specialization Graduation Project
+- **Presented at:**
+  - KAUST Academy AI Specialization Graduation Project Presentation
+  - MENA ML Winter School 2026 — KAUST, Saudi Arabia
+- **Focus:** Full-stack development, LLM integration, Retrieval-Augmented Generation (RAG), and automated Arabic medical fact-checking
+  
+**Status:** Functional prototype developed and evaluated as an academic project.
 
 ---
 
